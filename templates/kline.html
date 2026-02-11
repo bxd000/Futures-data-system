@@ -82,7 +82,7 @@
     };
   }
 
-  var chart = echarts.init(chartDom);
+  var chart = echarts.init(chartDom, null, { renderer: "canvas", useDirtyRect: true });
   var cache = {};
   var tableDebounceTimer = null;
   var currentData = null;
@@ -182,6 +182,11 @@
     var theme = chartTheme();
     var opt = {
       animation: false,
+      animationThreshold: 0,
+      large: true,
+      largeThreshold: 2000,
+      progressive: 800,
+      progressiveThreshold: 3000,
       tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
       legend: { data: ["K线", "MA20", "成交量"], top: 0, textStyle: theme.textStyle },
       grid: [
@@ -201,9 +206,9 @@
         { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 50, showDataShadow: false, showDetail: false, height: 24, borderColor: "transparent", fillerColor: isDark() ? "rgba(71,85,105,0.25)" : "rgba(148,163,184,0.2)", handleSize: "60%", moveHandleSize: "60%" }
       ],
       series: [
-        { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
-        { name: "MA20", type: "line", data: ma20Data, xAxisIndex: 0, yAxisIndex: 0, symbol: "none", lineStyle: { color: "#ffa726", width: 2 }, smooth: true },
-        { name: "成交量", type: "bar", data: volBar, xAxisIndex: 1, yAxisIndex: 1 }
+        { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, large: true, largeThreshold: 2000, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
+        { name: "MA20", type: "line", data: ma20Data, xAxisIndex: 0, yAxisIndex: 0, symbol: "none", sampling: "lttb", lineStyle: { color: "#ffa726", width: 2 }, smooth: true, progressive: 500 },
+        { name: "成交量", type: "bar", data: volBar, xAxisIndex: 1, yAxisIndex: 1, large: true, largeThreshold: 2000, progressive: 500 }
       ]
     };
     opt.legend.textStyle = theme.legend.textStyle;
