@@ -13,6 +13,9 @@
     .pager button { padding: 6px 14px; border-radius: 6px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; cursor: pointer; }
     .pager button:hover { background: #1e293b; }
     .pager button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pager-jump { display: flex; align-items: center; gap: 6px; }
+    .pager-jump input { width: 56px; padding: 6px 8px; border-radius: 6px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; font-size: 14px; text-align: center; }
+    .pager-jump input:focus { outline: none; border-color: #26a69a; }
     .empty-tip { padding: 32px; text-align: center; color: #64748b; }
   </style>
 {% endblock %}
@@ -37,6 +40,12 @@
     <span id="info"></span>
     <button id="prev">上一页</button>
     <button id="next">下一页</button>
+    <div class="pager-jump">
+      <span style="color:#94a3b8;">跳至</span>
+      <input type="number" id="pageInput" min="1" placeholder="页码" title="输入页码后回车或点击跳转" />
+      <span id="totalPagesSpan">/ 1</span>
+      <button id="gotoBtn">跳转</button>
+    </div>
   </div>
 {% endblock %}
 {% block script %}
@@ -49,6 +58,9 @@
   var info = document.getElementById("info");
   var prevBtn = document.getElementById("prev");
   var nextBtn = document.getElementById("next");
+  var pageInput = document.getElementById("pageInput");
+  var gotoBtn = document.getElementById("gotoBtn");
+  var totalPagesSpan = document.getElementById("totalPagesSpan");
 
   var page = 1, size = 100, total = 0;
 
@@ -79,6 +91,10 @@
         info.textContent = "共 " + data.total + " 条，当前 " + from + "–" + to;
         prevBtn.disabled = data.page <= 1;
         nextBtn.disabled = data.page * data.size >= data.total;
+        var maxPage = Math.ceil(data.total / data.size) || 1;
+        totalPagesSpan.textContent = "/ " + maxPage;
+        pageInput.max = maxPage;
+        pageInput.value = data.page;
       })
       .catch(function() {
         tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = "加载失败或暂无数据";
@@ -86,9 +102,17 @@
       });
   }
 
+  function gotoPage() {
+    var p = parseInt(pageInput.value, 10);
+    var maxPage = Math.ceil(total / size) || 1;
+    if (p >= 1 && p <= maxPage) { page = p; load(); }
+  }
+
   symbolSel.addEventListener("change", function() { page = 1; load(); });
   prevBtn.addEventListener("click", function() { if (page > 1) { page--; load(); } });
   nextBtn.addEventListener("click", function() { if (page * size < total) { page++; load(); } });
+  gotoBtn.addEventListener("click", gotoPage);
+  pageInput.addEventListener("keydown", function(e) { if (e.key === "Enter") { e.preventDefault(); gotoPage(); } });
   load();
 })();
 </script>
