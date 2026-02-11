@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}K线图 - 期货日K线数据系统{% endblock %}
+{% block head %}
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .toolbar label { font-size: 14px; color: #94a3b8; }
+    .toolbar select { padding: 8px 12px; font-size: 14px; border-radius: 8px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; cursor: pointer; min-width: 120px; }
+    #chart { width: 100%; height: 55vh; min-height: 360px; }
+    .table-wrap { margin-top: 16px; max-height: 38vh; overflow: auto; border: 1px solid #2d3748; border-radius: 8px; background: #16213e; }
+    .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table-wrap th, .table-wrap td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #2d3748; }
+    .table-wrap th { text-align: left; position: sticky; top: 0; background: #16213e; color: #94a3b8; }
+    .table-wrap tr:hover { background: rgba(38,166,154,0.08); }
+    .empty-tip { color: #64748b; padding: 24px; text-align: center; }
+  </style>
+{% endblock %}
+{% block content %}
+  <h1 style="margin-top:0; font-size:1.4rem;">K线图</h1>
+  <div class="toolbar">
+    <label for="symbol">品种：</label>
+    <select id="symbol">
+      {% for code, name in symbols %}
+      <option value="{{ code }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+    <span style="color:#64748b; font-size:13px;">拖拽图表或滑动条缩放，下方表格显示当前区间</span>
+  </div>
+  <div id="chart"></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>成交量</th><th>MA20</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div id="emptyTip" class="empty-tip" style="display:none;">请选择品种或等待数据加载</div>
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+(function() {
+  var symbolSel = document.getElementById("symbol");
+  var chartDom = document.getElementById("chart");
+  var tb = document.getElementById("tb");
+  var emptyTip = document.getElementById("emptyTip");
+  var body = document.getElementById("body-theme");
+
+  function isDark() { return body.classList.contains("theme-dark"); }
+  function chartTheme() {
+    var dark = isDark();
+    return {
+      backgroundColor: "transparent",
+      textStyle: { color: dark ? "#94a3b8" : "#64748b" },
+      legend: { textStyle: { color: dark ? "#94a3b8" : "#64748b" } },
+      grid: [ {}, {} ],
+      xAxis: [
+        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } },
+        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } }
+      ],
+      yAxis: [
+        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { lineStyle: { opacity: dark ? 0.2 : 0.15, color: dark ? "#334155" : "#e2e8f0" } } },
+        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } }
+      ],
+      dataZoom: [
+        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
+        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
+      ]
+    };
+  }
+
+  var chart = echarts.init(chartDom);
+  var cache = {};
+  var tableRaf = null;
+
+  function loadData(code, cb) {
+    if (cache[code]) { cb(cache[code]); return; }
+    fetch("/api/kline/" + encodeURIComponent(code)).then(function(r) {
+      if (!r.ok) throw new Error("无数据");
+      return r.json();
+    }).then(function(data) {
+      cache[code] = data;
+      cb(data);
+    }).catch(function(e) {
+      cb(null);
+    });
+  }
+
+  function fillTable(data, i0, i1) {
+    if (!data || !data.dates) { tb.innerHTML = ""; emptyTip.style.display = "block"; return; }
+    emptyTip.style.display = "none";
+    var dates = data.dates, k = data.k, vol = data.vol, ma20 = data.ma20 || [];
+    i0 = Math.max(0, Math.floor(i0));
+    i1 = Math.min(dates.length, Math.ceil(i1));
+    var html = "";
+    for (var i = i0; i < i1; i++) {
+      var r = k[i];
+      var m = ma20[i] != null ? ma20[i] : "";
+      html += "<tr><td>" + dates[i] + "</td><td>" + r[0] + "</td><td>" + r[3] + "</td><td>" + r[2] + "</td><td>" + r[1] + "</td><td>" + vol[i] + "</td><td>" + m + "</td></tr>";
+    }
+    tb.innerHTML = html;
+  }
+
+  function applyChartOption(baseOpt, data) {
+    var dates = data.dates, kData = data.k, volData = data.vol, ma20 = data.ma20 || [];
+    var volBar = volData.map(function(v, i) {
+      var c = kData[i][0] <= kData[i][1] ? "#26a69a" : "#ef5350";
+      return { value: v, itemStyle: { color: c } };
+    });
+    var ma20Data = ma20.map(function(v) { return v == null ? "-" : v; });
+    var theme = chartTheme();
+    var opt = {
+      animation: false,
+      tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+      legend: { data: ["K线", "MA20", "成交量"], top: 0, textStyle: theme.textStyle },
+      grid: [
+        { left: "10%", right: "8%", top: "12%", height: "50%" },
+        { left: "10%", right: "8%", top: "68%", height: "26%" }
+      ],
+      xAxis: [
+        { type: "category", data: dates, gridIndex: 0, axisLabel: { show: true }, silent: false },
+        { type: "category", data: dates, gridIndex: 1, axisLabel: { show: false } }
+      ],
+      yAxis: [
+        { scale: true, gridIndex: 0, splitLine: { show: true }, axisLabel: {} },
+        { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: {} }
+      ],
+      dataZoom: [
+        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 60, zoomOnMouseWheel: true, moveOnMouseMove: true },
+        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 60 }
+      ],
+      series: [
+        { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
+        { name: "MA20", type: "line", data: ma20Data, xAxisIndex: 0, yAxisIndex: 0, symbol: "none", lineStyle: { color: "#ffa726", width: 2 }, smooth: true },
+        { name: "成交量", type: "bar", data: volBar, xAxisIndex: 1, yAxisIndex: 1 }
+      ]
+    };
+    opt.legend.textStyle = theme.legend.textStyle;
+    opt.xAxis[0].axisLabel.color = theme.xAxis[0].axisLabel.color;
+    opt.xAxis[1].axisLabel.color = theme.xAxis[1].axisLabel.color;
+    opt.yAxis[0].axisLabel = theme.yAxis[0].axisLabel;
+    opt.yAxis[0].splitLine = theme.yAxis[0].splitLine;
+    opt.yAxis[1].axisLabel = theme.yAxis[1].axisLabel;
+    opt.dataZoom[0] = Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
+    opt.dataZoom[1] = Object.assign(opt.dataZoom[1], theme.dataZoom[1]);
+    chart.setOption(opt, { replaceMerge: ["series"] });
+  }
+
+  function render(code) {
+    emptyTip.style.display = "block";
+    emptyTip.textContent = "加载中…";
+    loadData(code, function(data) {
+      if (!data) {
+        tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = "该品种暂无数据";
+        chart.clear();
+        return;
+      }
+      emptyTip.style.display = "none";
+      applyChartOption(null, data);
+      chart.off("dataZoom");
+      chart.on("dataZoom", function() {
+        if (tableRaf) cancelAnimationFrame(tableRaf);
+        tableRaf = requestAnimationFrame(function() {
+          tableRaf = null;
+          var opt = chart.getOption();
+          var dz = opt.dataZoom && opt.dataZoom[0];
+          if (!dz || dz.start == null) return;
+          var len = data.dates.length;
+          var start = (dz.start / 100) * len;
+          var end = (dz.end / 100) * len;
+          fillTable(data, start, end);
+        });
+      });
+      var len = data.dates.length;
+      fillTable(data, len * 0.7, len);
+    });
+  }
+
+  body.addEventListener("themechange", function() {
+    var code = symbolSel.value;
+    if (!cache[code]) return;
+    applyChartOption(null, cache[code]);
+  });
+
+  symbolSel.addEventListener("change", function() { render(symbolSel.value); });
+  window.addEventListener("resize", function() { chart.resize(); });
+  render(symbolSel.value);
+})();
+</script>
+{% endblock %}

@@ -55,6 +55,8 @@
     body.theme-light .card-link .card-link-title { color: #0d9488 !important; }
     body.theme-light .card-link .card-link-desc { color: #64748b !important; }
     body.theme-light .index-desc { color: #64748b !important; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #2d3748; font-size: 13px; color: #64748b; }
+    body.theme-light .footer { border-color: #e2e8f0; color: #94a3b8; }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -70,6 +72,9 @@
   </nav>
   <main>
     {% block content %}{% endblock %}
+    {% if data_end_date %}
+    <footer class="footer">数据截至 {{ data_end_date }} · 玉米 / 玉米淀粉 / 鸡蛋 主力连续日K</footer>
+    {% endif %}
   </main>
   <script>
     (function() {

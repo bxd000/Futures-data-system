@@ -21,6 +21,13 @@ from config import SYMBOL_LIST, csv_path
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
 
+@app.context_processor
+def inject_meta():
+    """向所有模板注入数据元信息。"""
+    meta = get_data_meta()
+    return {"data_end_date": meta["data_end_date"]}
+
+
 def load_kline(symbol: str, name: str):
     """读取某品种 CSV，返回 (dates, k_data, volumes, ma20)。k_data 每项 [open, close, low, high]。"""
     path = csv_path(symbol, name)
@@ -56,6 +63,33 @@ def load_kline(symbol: str, name: str):
         else:
             ma20.append(round(sum(closes[i - 19 : i + 1]) / 20, 2))
     return dates, k_data, volumes, ma20
+
+
+def get_data_meta():
+    """返回数据元信息：最新日期、各品种条数。"""
+    latest = ""
+    counts = {}
+    for code, name in SYMBOL_LIST:
+        path = csv_path(code, name)
+        if not os.path.exists(path):
+            continue
+        n = 0
+        last_date = ""
+        with open(path, "r", encoding="utf-8-sig") as f:
+            next(f)
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(",")
+                if len(parts) >= 1:
+                    last_date = parts[0].strip()
+                    n += 1
+        if last_date:
+            counts[name] = n
+            if not latest or last_date > latest:
+                latest = last_date
+    return {"data_end_date": latest, "counts": counts}
 
 
 def load_table(symbol: str, name: str):
@@ -117,6 +151,12 @@ def api_table(code):
         "size": size,
         "rows": chunk,
     })
+
+
+@app.route("/api/meta")
+def api_meta():
+    """数据元信息：最新日期等。"""
+    return jsonify(get_data_meta())
 
 
 @app.route("/api/update", methods=["POST"])
