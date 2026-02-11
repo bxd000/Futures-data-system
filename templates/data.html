@@ -17,6 +17,8 @@
     .pager-jump input { width: 56px; padding: 6px 8px; border-radius: 6px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; font-size: 14px; text-align: center; }
     .pager-jump input:focus { outline: none; border-color: #26a69a; }
     .empty-tip { padding: 32px; text-align: center; color: #64748b; }
+    .toolbar input[type="date"] { padding: 6px 10px; font-size: 14px; border-radius: 8px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; }
+    .toolbar input[type="date"]:focus { outline: none; border-color: #26a69a; }
   </style>
 {% endblock %}
 {% block content %}
@@ -35,7 +37,12 @@
       <option value="200">200</option>
       <option value="500">500</option>
     </select>
-    <a href="#" id="linkKline" style="margin-left:12px; color:#26a69a; font-size:14px;">在 K 线图查看</a>
+    <span style="margin-left:12px; color:#94a3b8; font-size:14px;">在 K 线图查看：</span>
+    <label for="klineStart" style="color:#94a3b8;">从</label>
+    <input type="date" id="klineStart" title="开始日期（可选）" />
+    <label for="klineEnd" style="color:#94a3b8;">至</label>
+    <input type="date" id="klineEnd" title="结束日期（可选）" />
+    <a href="#" id="linkKline" style="margin-left:8px; color:#26a69a; font-size:14px;">跳转</a>
   </div>
   <div class="table-wrap">
     <table>
@@ -123,8 +130,18 @@
   }
 
   var linkKline = document.getElementById("linkKline");
-  linkKline.href = "/kline?code=" + encodeURIComponent(symbolSel.value);
-  symbolSel.addEventListener("change", function() { page = 1; load(); linkKline.href = "/kline?code=" + encodeURIComponent(symbolSel.value); });
+  var klineStart = document.getElementById("klineStart");
+  var klineEnd = document.getElementById("klineEnd");
+  function buildKlineUrl() {
+    var url = "/kline?code=" + encodeURIComponent(symbolSel.value);
+    if (klineStart.value) url += "&start=" + encodeURIComponent(klineStart.value);
+    if (klineEnd.value) url += "&end=" + encodeURIComponent(klineEnd.value);
+    return url;
+  }
+  linkKline.href = buildKlineUrl();
+  symbolSel.addEventListener("change", function() { page = 1; load(); linkKline.href = buildKlineUrl(); });
+  klineStart.addEventListener("change", function() { linkKline.href = buildKlineUrl(); });
+  klineEnd.addEventListener("change", function() { linkKline.href = buildKlineUrl(); });
   sizeSel.addEventListener("change", function() { size = parseInt(sizeSel.value, 10); page = 1; load(); });
   prevBtn.addEventListener("click", function() { if (page > 1) { page--; load(); } });
   nextBtn.addEventListener("click", function() { if (page * size < total) { page++; load(); } });

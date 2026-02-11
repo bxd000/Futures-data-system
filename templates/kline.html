@@ -71,7 +71,7 @@
 
   var chart = echarts.init(chartDom);
   var cache = {};
-  var tableRaf = null;
+  var tableDebounceTimer = null;
   var currentData = null;
 
   function loadData(code, cb) {
@@ -100,6 +100,24 @@
       html += "<tr data-index=\"" + i + "\"><td>" + dates[i] + "</td><td>" + r[0] + "</td><td>" + r[3] + "</td><td>" + r[2] + "</td><td>" + r[1] + "</td><td>" + vol[i] + "</td><td>" + m + "</td></tr>";
     }
     tb.innerHTML = html;
+  }
+
+  function zoomToDateRange(data, startDate, endDate) {
+    var dates = data.dates;
+    if (!dates || dates.length === 0) return;
+    var i0 = 0, i1 = dates.length - 1;
+    if (startDate) {
+      for (var i = 0; i < dates.length; i++) { if (dates[i] >= startDate) { i0 = i; break; } }
+    }
+    if (endDate) {
+      for (var j = dates.length - 1; j >= 0; j--) { if (dates[j] <= endDate) { i1 = j; break; } }
+    }
+    if (i0 > i1) i1 = i0;
+    var len = dates.length;
+    var start = (i0 / len) * 100;
+    var end = (i1 / len) * 100;
+    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
+    fillTable(data, i0, i1 + 1);
   }
 
   function zoomToIndex(data, idx) {
@@ -151,8 +169,8 @@
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: {} }
       ],
       dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 60, zoomOnMouseWheel: true, moveOnMouseMove: true },
-        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 60 }
+        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 120, zoomOnMouseWheel: true, moveOnMouseMove: true },
+        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 120 }
       ],
       series: [
         { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
@@ -185,9 +203,9 @@
       applyChartOption(null, data);
       chart.off("dataZoom");
       chart.on("dataZoom", function() {
-        if (tableRaf) cancelAnimationFrame(tableRaf);
-        tableRaf = requestAnimationFrame(function() {
-          tableRaf = null;
+        if (tableDebounceTimer) clearTimeout(tableDebounceTimer);
+        tableDebounceTimer = setTimeout(function() {
+          tableDebounceTimer = null;
           var opt = chart.getOption();
           var dz = opt.dataZoom && opt.dataZoom[0];
           if (!dz || dz.start == null) return;
@@ -195,7 +213,7 @@
           var start = (dz.start / 100) * len;
           var end = (dz.end / 100) * len;
           fillTable(data, start, end);
-        });
+        }, 180);
       });
       chart.off("click");
       chart.on("click", function(param) {
@@ -212,6 +230,11 @@
       };
       var len = data.dates.length;
       fillTable(data, len * 0.7, len);
+      var params = new URLSearchParams(window.location.search);
+      var startParam = params.get("start") || "", endParam = params.get("end") || "";
+      if (startParam || endParam) {
+        zoomToDateRange(data, startParam || null, endParam || null);
+      }
     });
   }
 
