@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}首页 - 期货日K线数据系统{% endblock %}
+{% block content %}
+  <h1 style="margin-top:0; font-size:1.5rem;">期货日K线数据系统</h1>
+  <p class="index-desc" style="color:#94a3b8; line-height:1.6; max-width:640px;">
+    玉米(C0)、玉米淀粉(CS0)、鸡蛋(JD0) 主力连续合约的历史日K线：在线查看 K 线图、数据表，并可一键更新数据到最新。
+  </p>
+  <div style="display:flex; flex-wrap:wrap; gap:16px; margin-top:28px;">
+    <a href="/kline" class="card-link" style="display:block; background:#16213e; border:1px solid #2d3748; border-radius:12px; padding:20px 24px; color:#e4e4e7; text-decoration:none; min-width:180px;">
+      <strong class="card-link-title" style="color:#26a69a;">K线图</strong>
+      <p class="card-link-desc" style="margin:8px 0 0; font-size:13px; color:#94a3b8;">切换品种、拖拽缩放、MA20、成交量</p>
+    </a>
+    <a href="/data" class="card-link" style="display:block; background:#16213e; border:1px solid #2d3748; border-radius:12px; padding:20px 24px; color:#e4e4e7; text-decoration:none; min-width:180px;">
+      <strong class="card-link-title" style="color:#26a69a;">数据表</strong>
+      <p class="card-link-desc" style="margin:8px 0 0; font-size:13px; color:#94a3b8;">按品种查看日K表格，含 MA20</p>
+    </a>
+    <a href="/update" class="card-link" style="display:block; background:#16213e; border:1px solid #2d3748; border-radius:12px; padding:20px 24px; color:#e4e4e7; text-decoration:none; min-width:180px;">
+      <strong class="card-link-title" style="color:#26a69a;">数据更新</strong>
+      <p class="card-link-desc" style="margin:8px 0 0; font-size:13px; color:#94a3b8;">从 akshare 补全到最新，可选导出 Excel</p>
+    </a>
+  </div>
+{% endblock %}

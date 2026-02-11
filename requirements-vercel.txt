@@ -1,0 +1,2 @@
+# Vercel 部署用：仅 Web 展示依赖，不含 akshare/pandas 以控制体积
+flask>=2.3.0

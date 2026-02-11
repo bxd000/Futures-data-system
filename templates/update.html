@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}数据更新 - 期货日K线数据系统{% endblock %}
+{% block head %}
+  <style>
+    .card { background: #16213e; border: 1px solid #2d3748; border-radius: 12px; padding: 24px; max-width: 640px; }
+    .card h2 { margin: 0 0 12px; font-size: 1.1rem; color: #e4e4e7; }
+    .card p { color: #94a3b8; font-size: 14px; margin: 0 0 20px; line-height: 1.5; }
+    .btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer; margin-right: 10px; margin-bottom: 8px; }
+    .btn-primary { background: #26a69a; color: #fff; }
+    .btn-primary:hover { background: #2bb8ab; }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-secondary { background: #334155; color: #e4e4e7; }
+    .btn-secondary:hover { background: #475569; }
+    .cb { margin-bottom: 16px; }
+    .cb label { display: flex; align-items: center; gap: 8px; cursor: pointer; color: #94a3b8; font-size: 14px; }
+    .cb input { width: 18px; height: 18px; }
+    #log { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 16px; font-family: Consolas, monospace; font-size: 12px; color: #94a3b8; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; display: none; }
+    #log.show { display: block; }
+    #log.success { border-color: #26a69a; }
+    #log.error { border-color: #ef5350; }
+  </style>
+{% endblock %}
+{% block content %}
+  <h1 style="margin-top:0; font-size:1.4rem;">数据更新</h1>
+  <div class="card">
+    <h2>更新到最新</h2>
+    <p>从 akshare 拉取 2024-07-18 之后的日K数据，与本地 CSV 合并，使三个品种更新到最新交易日。</p>
+    <div class="cb">
+      <label><input type="checkbox" id="doExport" /> 更新完成后同时导出 Excel（期货日K线_带图.xlsx）</label>
+    </div>
+    <button class="btn btn-primary" id="runBtn">执行更新</button>
+    <pre id="log"></pre>
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+(function() {
+  var runBtn = document.getElementById("runBtn");
+  var doExport = document.getElementById("doExport");
+  var logEl = document.getElementById("log");
+
+  runBtn.addEventListener("click", function() {
+    runBtn.disabled = true;
+    logEl.textContent = "正在执行…";
+    logEl.classList.add("show");
+    logEl.classList.remove("success", "error");
+    fetch("/api/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ export: doExport.checked })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      logEl.textContent = data.log || (data.ok ? "完成" : "失败");
+      logEl.classList.add(data.ok ? "success" : "error");
+      runBtn.disabled = false;
+    }).catch(function(e) {
+      logEl.textContent = "请求失败: " + e.message;
+      logEl.classList.add("error");
+      runBtn.disabled = false;
+    });
+  });
+})();
+</script>
+{% endblock %}

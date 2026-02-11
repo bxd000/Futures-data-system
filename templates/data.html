@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}数据表 - 期货日K线数据系统{% endblock %}
+{% block head %}
+  <style>
+    .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .toolbar select { padding: 8px 12px; font-size: 14px; border-radius: 8px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; cursor: pointer; min-width: 120px; }
+    .table-wrap { overflow: auto; border: 1px solid #2d3748; border-radius: 8px; background: #16213e; max-height: 70vh; }
+    .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table-wrap th, .table-wrap td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #2d3748; }
+    .table-wrap th { text-align: left; position: sticky; top: 0; background: #16213e; color: #94a3b8; z-index: 1; }
+    .table-wrap tr:hover { background: rgba(38,166,154,0.08); }
+    .pager { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #94a3b8; font-size: 14px; }
+    .pager button { padding: 6px 14px; border-radius: 6px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; cursor: pointer; }
+    .pager button:hover { background: #1e293b; }
+    .pager button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .empty-tip { padding: 32px; text-align: center; color: #64748b; }
+  </style>
+{% endblock %}
+{% block content %}
+  <h1 style="margin-top:0; font-size:1.4rem;">数据表</h1>
+  <div class="toolbar">
+    <label for="symbol" style="color:#94a3b8;">品种：</label>
+    <select id="symbol">
+      {% for code, name in symbols %}
+      <option value="{{ code }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>日期</th><th>开盘(元/吨)</th><th>最高(元/吨)</th><th>最低(元/吨)</th><th>收盘(元/吨)</th><th>成交量(手)</th><th>MA20</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+    <div id="emptyTip" class="empty-tip" style="display:none;">请选择品种</div>
+  </div>
+  <div class="pager" id="pager" style="display:none;">
+    <span id="info"></span>
+    <button id="prev">上一页</button>
+    <button id="next">下一页</button>
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+(function() {
+  var symbolSel = document.getElementById("symbol");
+  var tb = document.getElementById("tb");
+  var emptyTip = document.getElementById("emptyTip");
+  var pager = document.getElementById("pager");
+  var info = document.getElementById("info");
+  var prevBtn = document.getElementById("prev");
+  var nextBtn = document.getElementById("next");
+
+  var page = 1, size = 100, total = 0;
+
+  function load() {
+    var code = symbolSel.value;
+    fetch("/api/table/" + encodeURIComponent(code) + "?page=" + page + "&size=" + size)
+      .then(function(r) {
+        if (!r.ok) throw new Error("无数据");
+        return r.json();
+      })
+      .then(function(data) {
+        total = data.total;
+        var rows = data.rows || [];
+        if (rows.length === 0) {
+          tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = "该品种暂无数据";
+          pager.style.display = "none";
+          return;
+        }
+        emptyTip.style.display = "none";
+        pager.style.display = "flex";
+        var html = "";
+        rows.forEach(function(r) {
+          html += "<tr><td>" + r[0] + "</td><td>" + r[1] + "</td><td>" + r[2] + "</td><td>" + r[3] + "</td><td>" + r[4] + "</td><td>" + r[5] + "</td><td>" + (r[6] !== "" ? r[6] : "") + "</td></tr>";
+        });
+        tb.innerHTML = html;
+        var from = (data.page - 1) * data.size + 1;
+        var to = Math.min(data.page * data.size, data.total);
+        info.textContent = "共 " + data.total + " 条，当前 " + from + "–" + to;
+        prevBtn.disabled = data.page <= 1;
+        nextBtn.disabled = data.page * data.size >= data.total;
+      })
+      .catch(function() {
+        tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = "加载失败或暂无数据";
+        pager.style.display = "none";
+      });
+  }
+
+  symbolSel.addEventListener("change", function() { page = 1; load(); });
+  prevBtn.addEventListener("click", function() { if (page > 1) { page--; load(); } });
+  nextBtn.addEventListener("click", function() { if (page * size < total) { page++; load(); } });
+  load();
+})();
+</script>
+{% endblock %}
