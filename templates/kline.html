@@ -15,11 +15,12 @@
     .table-wrap tr.row-highlight { background: rgba(38,166,154,0.22); }
     .table-wrap tr { cursor: pointer; }
     .empty-tip { color: #64748b; padding: 24px; text-align: center; }
-    .range-bar { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .range-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
     .range-bar span { font-size: 13px; color: #64748b; margin-right: 4px; }
-    .range-bar .btn { padding: 5px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #334155; background: #16213e; color: #94a3b8; cursor: pointer; }
-    .range-bar .btn:hover { background: #1e293b; color: #26a69a; }
-    .range-bar .btn.active { background: rgba(38,166,154,0.2); color: #26a69a; border-color: #26a69a; }
+    .range-bar .btn { padding: 6px 14px; font-size: 13px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #64748b; cursor: pointer; font-weight: normal; }
+    .range-bar .btn:hover { color: #ef5350; }
+    .range-bar .btn.active { font-weight: bold; color: #ef5350; border-color: #cbd5e1; background: rgba(239,83,80,0.06); }
+    .theme-dark .range-bar .btn.active { border-color: #475569; background: rgba(239,83,80,0.08); }
   </style>
 {% endblock %}
 {% block content %}
@@ -31,7 +32,7 @@
       <option value="{{ code }}">{{ name }}</option>
       {% endfor %}
     </select>
-    <span style="color:#64748b; font-size:13px;">在图表上拖拽平移、滚轮缩放；点击表格行或 K 线定位</span>
+    <span style="color:#64748b; font-size:13px;">在图表上拖拽平移、滚轮缩放；点击表格行或折线定位</span>
   </div>
   <div class="range-bar" id="rangeBar">
     <span>区间：</span>
@@ -39,6 +40,7 @@
     <button type="button" class="btn" data-range="3m">3月</button>
     <button type="button" class="btn" data-range="6m">6月</button>
     <button type="button" class="btn" data-range="1y">1年</button>
+    <button type="button" class="btn" data-range="5y">5年</button>
     <button type="button" class="btn" data-range="all">全部</button>
   </div>
   <div id="chart"></div>
@@ -66,15 +68,9 @@
       backgroundColor: "transparent",
       textStyle: { color: dark ? "#94a3b8" : "#64748b" },
       legend: { textStyle: { color: dark ? "#94a3b8" : "#64748b" } },
-      grid: [ {}, {} ],
-      xAxis: [
-        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } },
-        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } }
-      ],
-      yAxis: [
-        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { lineStyle: { opacity: dark ? 0.2 : 0.15, color: dark ? "#334155" : "#e2e8f0" } } },
-        { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } }
-      ],
+      grid: [ {} ],
+      xAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } } ],
+      yAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { lineStyle: { opacity: dark ? 0.2 : 0.15, color: dark ? "#334155" : "#e2e8f0" } } } ],
       dataZoom: [
         { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
         { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
@@ -129,7 +125,7 @@
     var len = dates.length;
     var start = (i0 / len) * 100;
     var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
+    chart.setOption({ dataZoom: [ { start: start, end: end }, { start: start, end: end } ] });
     fillTable(data, i0, i1 + 1);
   }
 
@@ -141,6 +137,7 @@
     else if (rangeKey === "3m") n = Math.min(66, len);
     else if (rangeKey === "6m") n = Math.min(126, len);
     else if (rangeKey === "1y") n = Math.min(252, len);
+    else if (rangeKey === "5y") n = Math.min(1260, len);
     var i0 = len - n;
     var start = (i0 / len) * 100;
     var end = 100;
@@ -173,12 +170,8 @@
   }
 
   function applyChartOption(baseOpt, data) {
-    var dates = data.dates, kData = data.k, volData = data.vol, ma20 = data.ma20 || [];
-    var volBar = volData.map(function(v, i) {
-      var c = kData[i][0] <= kData[i][1] ? "#26a69a" : "#ef5350";
-      return { value: v, itemStyle: { color: c } };
-    });
-    var ma20Data = ma20.map(function(v) { return v == null ? "-" : v; });
+    var dates = data.dates, kData = data.k, ma20 = data.ma20 || [];
+    var closeData = kData.map(function(c) { return c[1]; });
     var theme = chartTheme();
     var opt = {
       animation: false,
@@ -188,35 +181,33 @@
       progressive: 800,
       progressiveThreshold: 3000,
       tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
-      legend: { data: ["K线", "MA20", "成交量"], top: 0, textStyle: theme.textStyle },
-      grid: [
-        { left: "10%", right: "8%", top: "12%", height: "50%" },
-        { left: "10%", right: "8%", top: "68%", height: "26%" }
-      ],
-      xAxis: [
-        { type: "category", data: dates, gridIndex: 0, axisLabel: { show: true }, silent: false },
-        { type: "category", data: dates, gridIndex: 1, axisLabel: { show: false } }
-      ],
-      yAxis: [
-        { scale: true, gridIndex: 0, splitLine: { show: true }, axisLabel: {} },
-        { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: {} }
-      ],
+      legend: { data: ["收盘价"], top: 0, textStyle: theme.textStyle },
+      grid: [ { left: "10%", right: "8%", top: "14%", bottom: "18%", containLabel: true } ],
+      xAxis: [ { type: "category", data: dates, boundaryGap: false, axisLabel: { show: true }, silent: false } ],
+      yAxis: [ { type: "value", scale: true, splitLine: { show: true }, axisLabel: {} } ],
       dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 80, filterMode: "none", zoomOnMouseWheel: true, moveOnMouseMove: true },
-        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 80, filterMode: "none", showDataShadow: false, showDetail: false, height: 24, borderColor: "transparent", fillerColor: isDark() ? "rgba(71,85,105,0.25)" : "rgba(148,163,184,0.2)", handleSize: "60%", moveHandleSize: "60%" }
+        { type: "inside", xAxisIndex: [0], start: 70, end: 100, throttleDelay: 80, filterMode: "none", zoomOnMouseWheel: true, moveOnMouseMove: true },
+        { type: "slider", xAxisIndex: [0], start: 70, end: 100, throttleDelay: 80, filterMode: "none", showDataShadow: false, showDetail: false, height: 24, borderColor: "transparent", fillerColor: isDark() ? "rgba(71,85,105,0.25)" : "rgba(148,163,184,0.2)", handleSize: "60%", moveHandleSize: "60%" }
       ],
-      series: [
-        { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, large: true, largeThreshold: 2000, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
-        { name: "MA20", type: "line", data: ma20Data, xAxisIndex: 0, yAxisIndex: 0, symbol: "none", sampling: "lttb", lineStyle: { color: "#ffa726", width: 2 }, smooth: true, progressive: 500 },
-        { name: "成交量", type: "bar", data: volBar, xAxisIndex: 1, yAxisIndex: 1, large: true, largeThreshold: 2000, progressive: 500 }
-      ]
+      series: [{
+        name: "收盘价",
+        type: "line",
+        data: closeData,
+        symbol: "circle",
+        symbolSize: function(v, idx) { return idx === closeData.length - 1 ? 6 : 0; },
+        showSymbol: true,
+        smooth: true,
+        lineStyle: { color: "#ef5350", width: 2 },
+        itemStyle: { color: "#ef5350" },
+        areaStyle: { color: "rgba(239,83,80,0.18)" },
+        sampling: "lttb",
+        progressive: 500
+      }]
     };
     opt.legend.textStyle = theme.legend.textStyle;
     opt.xAxis[0].axisLabel.color = theme.xAxis[0].axisLabel.color;
-    opt.xAxis[1].axisLabel.color = theme.xAxis[1].axisLabel.color;
     opt.yAxis[0].axisLabel = theme.yAxis[0].axisLabel;
     opt.yAxis[0].splitLine = theme.yAxis[0].splitLine;
-    opt.yAxis[1].axisLabel = theme.yAxis[1].axisLabel;
     opt.dataZoom[0] = Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
     opt.dataZoom[1] = Object.assign(opt.dataZoom[1], theme.dataZoom[1]);
     chart.setOption(opt, { replaceMerge: ["series"] });
@@ -250,7 +241,7 @@
       });
       chart.off("click");
       chart.on("click", function(param) {
-        if (param.seriesName === "K线" && param.dataIndex != null && currentData) {
+        if (param.seriesName === "收盘价" && param.dataIndex != null && currentData) {
           zoomToIndex(currentData, param.dataIndex);
         }
       });
@@ -275,8 +266,8 @@
       if (startParam || endParam) {
         zoomToDateRange(data, startParam || null, endParam || null);
       } else {
-        zoomToRange(data, "3m");
-        rangeBar.querySelector(".btn[data-range=\"3m\"]").classList.add("active");
+        zoomToRange(data, "all");
+        rangeBar.querySelector(".btn[data-range=\"all\"]").classList.add("active");
       }
     });
   }
