@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+.eggs/
+
+# 本地生成，不必上传
+*.xlsx
+期货日K线_带图*.xlsx
+charts/
+kline.html
+kline_tv.html
+
+# IDE / 系统
+.cursor/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Vercel 本地
+.vercel/

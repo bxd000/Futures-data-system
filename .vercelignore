@@ -1,0 +1,14 @@
+# 部署时忽略，减小上传体积
+__pycache__
+*.py[cod]
+*.pyo
+.venv
+venv
+.env
+.git
+.cursor
+*.xlsx
+期货日K线_带图*.xlsx
+charts
+kline.html
+kline_tv.html

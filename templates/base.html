@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}期货日K线数据系统{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; min-height: 100vh; transition: background 0.25s ease, color 0.25s ease; }
+    /* 夜间模式（默认） */
+    body.theme-dark { background: #1a1a2e; color: #e4e4e7; }
+    body.theme-dark .nav { background: #16213e; }
+    body.theme-dark .nav a { color: #94a3b8; }
+    body.theme-dark .nav a:hover { color: #26a69a; background: rgba(38,166,154,0.1); }
+    body.theme-dark .nav a.active { color: #26a69a; }
+    body.theme-dark .nav .brand { color: #e4e4e7; }
+    body.theme-dark .theme-btn { background: #2d3748; color: #94a3b8; border: 1px solid #475569; }
+    body.theme-dark .theme-btn:hover { background: #374151; color: #e4e4e7; }
+    /* 日间模式 */
+    body.theme-light { background: #f1f5f9; color: #1e293b; }
+    body.theme-light .nav { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    body.theme-light .nav a { color: #64748b; }
+    body.theme-light .nav a:hover { color: #0d9488; background: rgba(13,148,136,0.08); }
+    body.theme-light .nav a.active { color: #0d9488; }
+    body.theme-light .nav .brand { color: #1e293b; }
+    body.theme-light .theme-btn { background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; }
+    body.theme-light .theme-btn:hover { background: #cbd5e1; color: #1e293b; }
+
+    .nav { padding: 0 20px; display: flex; align-items: center; gap: 0; flex-wrap: wrap; transition: background 0.25s ease, box-shadow 0.25s ease; }
+    .nav a { text-decoration: none; padding: 14px 18px; font-size: 15px; display: inline-block; transition: color 0.2s, background 0.2s; }
+    .nav .brand { font-weight: 700; margin-right: 8px; }
+    .nav-spacer { flex: 1; }
+    .theme-btn { padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; margin-left: 8px; transition: background 0.2s, color 0.2s; }
+    main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+    /* 日间模式 - 子页通用组件 */
+    body.theme-light .toolbar label { color: #64748b; }
+    body.theme-light .toolbar select { background: #fff; border-color: #cbd5e1; color: #1e293b; }
+    body.theme-light .table-wrap { background: #fff; border-color: #e2e8f0; }
+    body.theme-light .table-wrap th, body.theme-light .table-wrap td { border-color: #e2e8f0; }
+    body.theme-light .table-wrap th { background: #f8fafc; color: #64748b; }
+    body.theme-light .table-wrap tr:hover { background: rgba(13,148,136,0.06); }
+    body.theme-light .card { background: #fff; border-color: #e2e8f0; }
+    body.theme-light .card h2 { color: #1e293b; }
+    body.theme-light .card p { color: #64748b; }
+    body.theme-light .btn-secondary { background: #e2e8f0; color: #475569; }
+    body.theme-light .btn-secondary:hover { background: #cbd5e1; }
+    body.theme-light #log { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
+    body.theme-light .empty-tip { color: #94a3b8; }
+    body.theme-light h1 { color: #1e293b; }
+    body.theme-light .pager { color: #64748b; }
+    body.theme-light .pager button { background: #fff; border-color: #cbd5e1; color: #334155; }
+    body.theme-light .pager button:hover { background: #f1f5f9; }
+    body.theme-light .card-link { background: #fff !important; border-color: #e2e8f0 !important; color: #1e293b !important; }
+    body.theme-light .card-link .card-link-title { color: #0d9488 !important; }
+    body.theme-light .card-link .card-link-desc { color: #64748b !important; }
+    body.theme-light .index-desc { color: #64748b !important; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="theme-dark" id="body-theme">
+  <nav class="nav">
+    <a class="brand" href="/">期货日K线</a>
+    <a href="/" class="{% if request.endpoint == 'index' %}active{% endif %}">首页</a>
+    <a href="/kline" class="{% if request.endpoint == 'kline_page' %}active{% endif %}">K线图</a>
+    <a href="/data" class="{% if request.endpoint == 'data_page' %}active{% endif %}">数据表</a>
+    <a href="/update" class="{% if request.endpoint == 'update_page' %}active{% endif %}">数据更新</a>
+    <div class="nav-spacer"></div>
+    <button type="button" class="theme-btn" id="themeToggle" aria-label="切换日间/夜间">夜间</button>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (function() {
+      var key = "kline-theme";
+      var body = document.getElementById("body-theme");
+      var btn = document.getElementById("themeToggle");
+      function isDark() { return body.classList.contains("theme-dark"); }
+      function applyTheme(dark) {
+        body.classList.remove("theme-light", "theme-dark");
+        body.classList.add(dark ? "theme-dark" : "theme-light");
+        btn.textContent = dark ? "夜间" : "日间";
+        try { localStorage.setItem(key, dark ? "dark" : "light"); } catch (e) {}
+        body.dispatchEvent(new CustomEvent("themechange", { detail: { dark: dark } }));
+      }
+      try {
+        var saved = localStorage.getItem(key);
+        if (saved === "light") applyTheme(false);
+      } catch (e) {}
+      btn.addEventListener("click", function() { applyTheme(!isDark()); });
+    })();
+  </script>
+  {% block script %}{% endblock %}
+</body>
+</html>
