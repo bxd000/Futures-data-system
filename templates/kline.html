@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}K线图 - 期货日K线数据系统{% endblock %}
 {% block head %}
+  {% if has_local_echarts|default(false) %}
+  <script src="{{ url_for('static', filename='echarts.min.js') }}"></script>
+  {% else %}
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  {% endif %}
   <style>
     .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
     .toolbar label { font-size: 14px; color: #94a3b8; }
@@ -43,7 +47,7 @@
     <button type="button" class="btn" data-range="5y">5年</button>
     <button type="button" class="btn" data-range="all">全部</button>
   </div>
-  <div id="chart"></div>
+  <div id="chart" role="img" aria-label="收盘价折线图，支持拖拽缩放与区间选择"></div>
   <div class="table-wrap">
     <table>
       <thead><tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>成交量</th><th>MA20</th></tr></thead>
@@ -86,14 +90,12 @@
   function loadData(code, cb) {
     if (cache[code]) { cb(cache[code]); return; }
     fetch("/api/kline/" + encodeURIComponent(code)).then(function(r) {
-      if (!r.ok) throw new Error("无数据");
-      return r.json();
-    }).then(function(data) {
-      cache[code] = data;
-      cb(data);
-    }).catch(function(e) {
-      cb(null);
-    });
+      return r.json().then(function(data) {
+        if (!r.ok) { cb(null, (data && (data.error || data.log)) || "无数据"); return; }
+        cache[code] = data;
+        cb(data);
+      }).catch(function() { cb(null, "加载失败"); });
+    }).catch(function() { cb(null, "加载失败"); });
   }
 
   function fillTable(data, i0, i1) {
@@ -217,13 +219,16 @@
   function render(code) {
     emptyTip.style.display = "block";
     emptyTip.textContent = "加载中…";
-    loadData(code, function(data) {
+    loadData(code, function(data, errMsg) {
+      var rangeBar = document.getElementById("rangeBar");
       if (!data) {
-        tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = "该品种暂无数据";
+        tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = errMsg || "该品种暂无数据";
         chart.clear();
+        rangeBar.querySelectorAll(".btn").forEach(function(b) { b.disabled = true; });
         return;
       }
       emptyTip.style.display = "none";
+      rangeBar.querySelectorAll(".btn").forEach(function(b) { b.disabled = false; });
       currentData = data;
       applyChartOption(null, data);
       chart.off("dataZoom");

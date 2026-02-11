@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 from flask import Flask, render_template, request, jsonify, send_file
 
@@ -19,6 +20,11 @@ if ROOT not in sys.path:
 from config import SYMBOL_LIST, csv_path
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
+
+# get_data_meta 内存缓存，减少重复读盘
+_meta_cache = None
+_meta_cache_time = 0
+META_CACHE_TTL = 60  # 秒
 
 
 @app.context_processor
@@ -69,7 +75,11 @@ def load_kline(symbol: str, name: str):
 
 
 def get_data_meta():
-    """返回数据元信息：最新日期、各品种条数。任何异常时返回空，避免 500。"""
+    """返回数据元信息：最新日期、各品种条数。带 60 秒内存缓存。任何异常时返回空，避免 500。"""
+    global _meta_cache, _meta_cache_time
+    now = time.time()
+    if _meta_cache is not None and (now - _meta_cache_time) < META_CACHE_TTL:
+        return _meta_cache
     try:
         latest = ""
         counts = {}
@@ -93,7 +103,9 @@ def get_data_meta():
                 counts[name] = n
                 if not latest or last_date > latest:
                     latest = last_date
-        return {"data_end_date": latest or "", "counts": counts}
+        _meta_cache = {"data_end_date": latest or "", "counts": counts}
+        _meta_cache_time = now
+        return _meta_cache
     except Exception:
         return {"data_end_date": "", "counts": {}}
 
@@ -130,12 +142,14 @@ def api_kline(code):
     dates, k_data, volumes, ma20 = load_kline(code, name)
     if not dates:
         return jsonify({"error": "无数据"}), 404
-    return jsonify({
+    resp = jsonify({
         "dates": dates,
         "k": k_data,
         "vol": volumes,
         "ma20": [v if v is not None else None for v in ma20],
     })
+    resp.headers["Cache-Control"] = "public, max-age=60"
+    return resp
 
 
 @app.route("/api/table/<code>")
@@ -151,18 +165,22 @@ def api_table(code):
     total = len(rows)
     start = (page - 1) * size
     chunk = rows[start : start + size]
-    return jsonify({
+    resp = jsonify({
         "total": total,
         "page": page,
         "size": size,
         "rows": chunk,
     })
+    resp.headers["Cache-Control"] = "public, max-age=30"
+    return resp
 
 
 @app.route("/api/meta")
 def api_meta():
     """数据元信息：最新日期等。"""
-    return jsonify(get_data_meta())
+    resp = jsonify(get_data_meta())
+    resp.headers["Cache-Control"] = "public, max-age=60"
+    return resp
 
 
 @app.route("/api/update", methods=["POST"])
@@ -186,9 +204,9 @@ def api_update():
             log += "\n" + (out2.stdout or "") + (out2.stderr or "")
         return jsonify({"ok": True, "log": log.strip() or "完成"})
     except subprocess.TimeoutExpired:
-        return jsonify({"ok": False, "log": "执行超时"})
+        return jsonify({"ok": False, "log": "执行超时", "error": "执行超时"})
     except Exception as e:
-        return jsonify({"ok": False, "log": str(e)})
+        return jsonify({"ok": False, "log": str(e), "error": str(e)})
 
 
 # ---------- 页面 ----------
@@ -200,7 +218,9 @@ def index():
 
 @app.route("/kline")
 def kline_page():
-    return render_template("kline.html", symbols=SYMBOL_LIST)
+    static_dir = app.static_folder or os.path.join(ROOT, "static")
+    has_local_echarts = os.path.isfile(os.path.join(static_dir, "echarts.min.js"))
+    return render_template("kline.html", symbols=SYMBOL_LIST, has_local_echarts=has_local_echarts)
 
 
 @app.route("/data")

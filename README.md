@@ -18,7 +18,7 @@ python app.py
 浏览器打开 **http://127.0.0.1:5000**，可：
 
 - **首页**：入口导航
-- **K线图**：切换品种、ECharts 蜡烛图 + MA20 + 成交量、拖拽缩放，下方表格联动
+- **K线图**：切换品种、收盘价折线 + 面积图、区间与网格、拖拽缩放，下方表格联动
 - **数据表**：按品种分页查看日K表格（开/高/低/收/量/MA20）
 - **数据更新**：一键从 akshare 补全到最新，可选同时导出 Excel（仅本地；线上为只读）
 
@@ -65,12 +65,8 @@ python app.py
 - **新浪财经**：历史日K自上市/有记录起，该接口约 2024-07-17 后停更。
 - **akshare**：用于补全 2024-07-18 至今，与现有 CSV 合并后写回，保证到最新交易日。
 
-## 其他展示方式（可选）
+## 可选优化
 
-| 方式 | 命令 | 说明 |
-|------|------|------|
-| ECharts 网页 | `python gen_kline_html.py` → 打开 **kline.html** | 单文件、可切换品种、拖拽缩放 |
-| TradingView 风格 | `python gen_kline_tv.py` → **kline_tv.html** | 深色主题 |
-| 静态 PNG | `python kline_png.py` | 生成 **charts/** 下图片 |
-| Streamlit | `streamlit run kline_streamlit.py` | 本地网页，选品种与日期范围 |
-| Excel 带图 | `python run.py export` 或 `python csv_to_excel_with_chart.py` | 表格 + K 线 + MA20 |
+- **ECharts 本地化**：运行 `python scripts/download_echarts.py` 将 ECharts 5.4.3 下载到 `static/echarts.min.js`，K 线页将优先使用本地文件，减少对 CDN 的依赖。
+- **其他展示方式**：`archive/` 目录下保留有单文件 HTML、TradingView 风格、PNG 生成、Streamlit 等旧脚本，可按需使用。
+- **Excel 带图**：`python run.py export` 或 `python csv_to_excel_with_chart.py` 可生成表格 + K 线 + MA20 的 Excel。
