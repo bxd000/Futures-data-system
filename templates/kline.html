@@ -12,6 +12,8 @@
     .table-wrap th, .table-wrap td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #2d3748; }
     .table-wrap th { text-align: left; position: sticky; top: 0; background: #16213e; color: #94a3b8; }
     .table-wrap tr:hover { background: rgba(38,166,154,0.08); }
+    .table-wrap tr.row-highlight { background: rgba(38,166,154,0.22); }
+    .table-wrap tr { cursor: pointer; }
     .empty-tip { color: #64748b; padding: 24px; text-align: center; }
   </style>
 {% endblock %}
@@ -24,7 +26,7 @@
       <option value="{{ code }}">{{ name }}</option>
       {% endfor %}
     </select>
-    <span style="color:#64748b; font-size:13px;">拖拽图表或滑动条缩放，下方表格显示当前区间</span>
+    <span style="color:#64748b; font-size:13px;">拖拽图表缩放；点击表格行定位到该日，点击 K 线高亮表格对应行</span>
   </div>
   <div id="chart"></div>
   <div class="table-wrap">
@@ -70,6 +72,7 @@
   var chart = echarts.init(chartDom);
   var cache = {};
   var tableRaf = null;
+  var currentData = null;
 
   function loadData(code, cb) {
     if (cache[code]) { cb(cache[code]); return; }
@@ -94,9 +97,33 @@
     for (var i = i0; i < i1; i++) {
       var r = k[i];
       var m = ma20[i] != null ? ma20[i] : "";
-      html += "<tr><td>" + dates[i] + "</td><td>" + r[0] + "</td><td>" + r[3] + "</td><td>" + r[2] + "</td><td>" + r[1] + "</td><td>" + vol[i] + "</td><td>" + m + "</td></tr>";
+      html += "<tr data-index=\"" + i + "\"><td>" + dates[i] + "</td><td>" + r[0] + "</td><td>" + r[3] + "</td><td>" + r[2] + "</td><td>" + r[1] + "</td><td>" + vol[i] + "</td><td>" + m + "</td></tr>";
     }
     tb.innerHTML = html;
+  }
+
+  function zoomToIndex(data, idx) {
+    var len = data.dates.length;
+    if (len === 0) return;
+    var half = 25;
+    var i0 = Math.max(0, idx - half);
+    var i1 = Math.min(len, idx + half);
+    var start = (i0 / len) * 100;
+    var end = (i1 / len) * 100;
+    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
+    fillTable(data, i0, i1);
+    highlightRow(idx);
+    setTimeout(function() { highlightRow(idx); }, 80);
+  }
+
+  function highlightRow(idx) {
+    var rows = tb.querySelectorAll("tr");
+    rows.forEach(function(tr) { tr.classList.remove("row-highlight"); });
+    var row = tb.querySelector("tr[data-index=\"" + idx + "\"]");
+    if (row) {
+      row.classList.add("row-highlight");
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
   }
 
   function applyChartOption(baseOpt, data) {
@@ -154,6 +181,7 @@
         return;
       }
       emptyTip.style.display = "none";
+      currentData = data;
       applyChartOption(null, data);
       chart.off("dataZoom");
       chart.on("dataZoom", function() {
@@ -169,6 +197,19 @@
           fillTable(data, start, end);
         });
       });
+      chart.off("click");
+      chart.on("click", function(param) {
+        if (param.seriesName === "K线" && param.dataIndex != null && currentData) {
+          zoomToIndex(currentData, param.dataIndex);
+        }
+      });
+      tb.onclick = function(e) {
+        var tr = e.target && e.target.closest("tr[data-index]");
+        if (tr && currentData) {
+          var idx = parseInt(tr.getAttribute("data-index"), 10);
+          zoomToIndex(currentData, idx);
+        }
+      };
       var len = data.dates.length;
       fillTable(data, len * 0.7, len);
     });
@@ -182,6 +223,12 @@
 
   symbolSel.addEventListener("change", function() { render(symbolSel.value); });
   window.addEventListener("resize", function() { chart.resize(); });
+  var params = new URLSearchParams(window.location.search);
+  var codeFromUrl = params.get("code");
+  if (codeFromUrl) {
+    var opt = Array.from(symbolSel.options).find(function(o) { return o.value === codeFromUrl; });
+    if (opt) symbolSel.value = codeFromUrl;
+  }
   render(symbolSel.value);
 })();
 </script>
