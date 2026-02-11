@@ -10,5 +10,5 @@ venv
 *.xlsx
 期货日K线_带图*.xlsx
 charts
-kline.html
-kline_tv.html
+/kline.html
+/kline_tv.html

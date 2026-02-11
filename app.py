@@ -23,9 +23,12 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 
 @app.context_processor
 def inject_meta():
-    """向所有模板注入数据元信息。"""
-    meta = get_data_meta()
-    return {"data_end_date": meta["data_end_date"]}
+    """向所有模板注入数据元信息。异常时不注入，避免 500。"""
+    try:
+        meta = get_data_meta()
+        return {"data_end_date": meta.get("data_end_date") or ""}
+    except Exception:
+        return {"data_end_date": ""}
 
 
 def load_kline(symbol: str, name: str):
@@ -66,30 +69,33 @@ def load_kline(symbol: str, name: str):
 
 
 def get_data_meta():
-    """返回数据元信息：最新日期、各品种条数。"""
-    latest = ""
-    counts = {}
-    for code, name in SYMBOL_LIST:
-        path = csv_path(code, name)
-        if not os.path.exists(path):
-            continue
-        n = 0
-        last_date = ""
-        with open(path, "r", encoding="utf-8-sig") as f:
-            next(f)
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(",")
-                if len(parts) >= 1:
-                    last_date = parts[0].strip()
-                    n += 1
-        if last_date:
-            counts[name] = n
-            if not latest or last_date > latest:
-                latest = last_date
-    return {"data_end_date": latest, "counts": counts}
+    """返回数据元信息：最新日期、各品种条数。任何异常时返回空，避免 500。"""
+    try:
+        latest = ""
+        counts = {}
+        for code, name in SYMBOL_LIST:
+            path = csv_path(code, name)
+            if not os.path.exists(path):
+                continue
+            n = 0
+            last_date = ""
+            with open(path, "r", encoding="utf-8-sig", errors="ignore") as f:
+                next(f, None)
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split(",")
+                    if len(parts) >= 1:
+                        last_date = parts[0].strip()
+                        n += 1
+            if last_date:
+                counts[name] = n
+                if not latest or last_date > latest:
+                    latest = last_date
+        return {"data_end_date": latest or "", "counts": counts}
+    except Exception:
+        return {"data_end_date": "", "counts": {}}
 
 
 def load_table(symbol: str, name: str):
