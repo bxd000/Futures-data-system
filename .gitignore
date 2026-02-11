@@ -14,8 +14,8 @@ env/
 *.xlsx
 期货日K线_带图*.xlsx
 charts/
-kline.html
-kline_tv.html
+/kline.html
+/kline_tv.html
 
 # IDE / 系统
 .cursor/
@@ -27,3 +27,4 @@ Thumbs.db
 
 # Vercel 本地
 .vercel/
+.vercel

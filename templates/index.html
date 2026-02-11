@@ -4,6 +4,7 @@
   <h1 style="margin-top:0; font-size:1.5rem;">期货日K线数据系统</h1>
   <p class="index-desc" style="color:#94a3b8; line-height:1.6; max-width:640px;">
     玉米(C0)、玉米淀粉(CS0)、鸡蛋(JD0) 主力连续合约的历史日K线：在线查看 K 线图、数据表，并可一键更新数据到最新。
+    {% if data_end_date %}<span style="color:#26a69a;">数据截至 {{ data_end_date }}</span>{% endif %}
   </p>
   <div style="display:flex; flex-wrap:wrap; gap:16px; margin-top:28px;">
     <a href="/kline" class="card-link" style="display:block; background:#16213e; border:1px solid #2d3748; border-radius:12px; padding:20px 24px; color:#e4e4e7; text-decoration:none; min-width:180px;">
