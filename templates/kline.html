@@ -15,6 +15,11 @@
     .table-wrap tr.row-highlight { background: rgba(38,166,154,0.22); }
     .table-wrap tr { cursor: pointer; }
     .empty-tip { color: #64748b; padding: 24px; text-align: center; }
+    .range-bar { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .range-bar span { font-size: 13px; color: #64748b; margin-right: 4px; }
+    .range-bar .btn { padding: 5px 12px; font-size: 13px; border-radius: 6px; border: 1px solid #334155; background: #16213e; color: #94a3b8; cursor: pointer; }
+    .range-bar .btn:hover { background: #1e293b; color: #26a69a; }
+    .range-bar .btn.active { background: rgba(38,166,154,0.2); color: #26a69a; border-color: #26a69a; }
   </style>
 {% endblock %}
 {% block content %}
@@ -26,7 +31,15 @@
       <option value="{{ code }}">{{ name }}</option>
       {% endfor %}
     </select>
-    <span style="color:#64748b; font-size:13px;">拖拽图表缩放；点击表格行定位到该日，点击 K 线高亮表格对应行</span>
+    <span style="color:#64748b; font-size:13px;">在图表上拖拽平移、滚轮缩放；点击表格行或 K 线定位</span>
+  </div>
+  <div class="range-bar" id="rangeBar">
+    <span>区间：</span>
+    <button type="button" class="btn" data-range="1m">1月</button>
+    <button type="button" class="btn" data-range="3m">3月</button>
+    <button type="button" class="btn" data-range="6m">6月</button>
+    <button type="button" class="btn" data-range="1y">1年</button>
+    <button type="button" class="btn" data-range="all">全部</button>
   </div>
   <div id="chart"></div>
   <div class="table-wrap">
@@ -63,7 +76,6 @@
         { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } }
       ],
       dataZoom: [
-        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
         { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
       ]
     };
@@ -116,8 +128,23 @@
     var len = dates.length;
     var start = (i0 / len) * 100;
     var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
+    chart.setOption({ dataZoom: [{ start: start, end: end }] });
     fillTable(data, i0, i1 + 1);
+  }
+
+  function zoomToRange(data, rangeKey) {
+    var len = data.dates.length;
+    if (len === 0) return;
+    var n = len;
+    if (rangeKey === "1m") n = Math.min(22, len);
+    else if (rangeKey === "3m") n = Math.min(66, len);
+    else if (rangeKey === "6m") n = Math.min(126, len);
+    else if (rangeKey === "1y") n = Math.min(252, len);
+    var i0 = len - n;
+    var start = (i0 / len) * 100;
+    var end = 100;
+    chart.setOption({ dataZoom: [{ start: start, end: end }] });
+    fillTable(data, i0, len);
   }
 
   function zoomToIndex(data, idx) {
@@ -128,7 +155,7 @@
     var i1 = Math.min(len, idx + half);
     var start = (i0 / len) * 100;
     var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
+    chart.setOption({ dataZoom: [{ start: start, end: end }] });
     fillTable(data, i0, i1);
     highlightRow(idx);
     setTimeout(function() { highlightRow(idx); }, 80);
@@ -169,8 +196,7 @@
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: {} }
       ],
       dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 120, zoomOnMouseWheel: true, moveOnMouseMove: true },
-        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 120 }
+        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 100, zoomOnMouseWheel: true, moveOnMouseMove: true }
       ],
       series: [
         { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
@@ -185,7 +211,6 @@
     opt.yAxis[0].splitLine = theme.yAxis[0].splitLine;
     opt.yAxis[1].axisLabel = theme.yAxis[1].axisLabel;
     opt.dataZoom[0] = Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
-    opt.dataZoom[1] = Object.assign(opt.dataZoom[1], theme.dataZoom[1]);
     chart.setOption(opt, { replaceMerge: ["series"] });
   }
 
@@ -228,12 +253,22 @@
           zoomToIndex(currentData, idx);
         }
       };
-      var len = data.dates.length;
-      fillTable(data, len * 0.7, len);
       var params = new URLSearchParams(window.location.search);
       var startParam = params.get("start") || "", endParam = params.get("end") || "";
+      var rangeBar = document.getElementById("rangeBar");
+      rangeBar.querySelectorAll(".btn").forEach(function(btn) {
+        btn.classList.remove("active");
+        btn.onclick = function() {
+          rangeBar.querySelectorAll(".btn").forEach(function(b) { b.classList.remove("active"); });
+          btn.classList.add("active");
+          zoomToRange(data, btn.getAttribute("data-range"));
+        };
+      });
       if (startParam || endParam) {
         zoomToDateRange(data, startParam || null, endParam || null);
+      } else {
+        zoomToRange(data, "3m");
+        rangeBar.querySelector(".btn[data-range=\"3m\"]").classList.add("active");
       }
     });
   }
