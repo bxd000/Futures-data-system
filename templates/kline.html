@@ -6,7 +6,7 @@
     .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
     .toolbar label { font-size: 14px; color: #94a3b8; }
     .toolbar select { padding: 8px 12px; font-size: 14px; border-radius: 8px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; cursor: pointer; min-width: 120px; }
-    #chart { width: 100%; height: 55vh; min-height: 360px; }
+    #chart { width: 100%; height: 55vh; min-height: 360px; transform: translateZ(0); will-change: transform; }
     .table-wrap { margin-top: 16px; max-height: 38vh; overflow: auto; border: 1px solid #2d3748; border-radius: 8px; background: #16213e; }
     .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .table-wrap th, .table-wrap td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #2d3748; }
@@ -76,6 +76,7 @@
         { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } }
       ],
       dataZoom: [
+        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
         { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
       ]
     };
@@ -128,7 +129,7 @@
     var len = dates.length;
     var start = (i0 / len) * 100;
     var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }] });
+    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
     fillTable(data, i0, i1 + 1);
   }
 
@@ -143,7 +144,7 @@
     var i0 = len - n;
     var start = (i0 / len) * 100;
     var end = 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }] });
+    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
     fillTable(data, i0, len);
   }
 
@@ -155,7 +156,7 @@
     var i1 = Math.min(len, idx + half);
     var start = (i0 / len) * 100;
     var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }] });
+    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
     fillTable(data, i0, i1);
     highlightRow(idx);
     setTimeout(function() { highlightRow(idx); }, 80);
@@ -196,7 +197,8 @@
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: {} }
       ],
       dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 100, zoomOnMouseWheel: true, moveOnMouseMove: true }
+        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 50, zoomOnMouseWheel: true, moveOnMouseMove: true },
+        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttleDelay: 50, showDataShadow: false, showDetail: false, height: 24, borderColor: "transparent", fillerColor: isDark() ? "rgba(71,85,105,0.25)" : "rgba(148,163,184,0.2)", handleSize: "60%", moveHandleSize: "60%" }
       ],
       series: [
         { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: "#ef5350", borderColor: "#ef5350", color0: "#26a69a", borderColor0: "#26a69a" } },
@@ -211,6 +213,7 @@
     opt.yAxis[0].splitLine = theme.yAxis[0].splitLine;
     opt.yAxis[1].axisLabel = theme.yAxis[1].axisLabel;
     opt.dataZoom[0] = Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
+    opt.dataZoom[1] = Object.assign(opt.dataZoom[1], theme.dataZoom[1]);
     chart.setOption(opt, { replaceMerge: ["series"] });
   }
 
@@ -232,13 +235,13 @@
         tableDebounceTimer = setTimeout(function() {
           tableDebounceTimer = null;
           var opt = chart.getOption();
-          var dz = opt.dataZoom && opt.dataZoom[0];
+          var dz = opt.dataZoom && (opt.dataZoom[0] || opt.dataZoom[1]);
           if (!dz || dz.start == null) return;
           var len = data.dates.length;
           var start = (dz.start / 100) * len;
           var end = (dz.end / 100) * len;
           fillTable(data, start, end);
-        }, 180);
+        }, 100);
       });
       chart.off("click");
       chart.on("click", function(param) {
