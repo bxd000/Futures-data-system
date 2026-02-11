@@ -69,8 +69,8 @@
       textStyle: { color: dark ? "#94a3b8" : "#64748b" },
       legend: { textStyle: { color: dark ? "#94a3b8" : "#64748b" } },
       grid: [ {} ],
-      xAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" } } ],
-      yAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { lineStyle: { opacity: dark ? 0.2 : 0.15, color: dark ? "#334155" : "#e2e8f0" } } } ],
+      xAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { show: true, lineStyle: { opacity: dark ? 0.16 : 0.12, color: dark ? "#334155" : "#e2e8f0" } } } ],
+      yAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { show: true, lineStyle: { opacity: dark ? 0.25 : 0.2, color: dark ? "#334155" : "#e2e8f0" } } } ],
       dataZoom: [
         { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
         { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
@@ -183,7 +183,7 @@
       tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
       legend: { data: ["收盘价"], top: 0, textStyle: theme.textStyle },
       grid: [ { left: "10%", right: "8%", top: "14%", bottom: "18%", containLabel: true } ],
-      xAxis: [ { type: "category", data: dates, boundaryGap: false, axisLabel: { show: true }, silent: false } ],
+      xAxis: [ { type: "category", data: dates, boundaryGap: false, axisLabel: { show: true }, silent: false, splitLine: { show: true } } ],
       yAxis: [ { type: "value", scale: true, splitLine: { show: true }, axisLabel: {} } ],
       dataZoom: [
         { type: "inside", xAxisIndex: [0], start: 70, end: 100, throttleDelay: 80, filterMode: "none", zoomOnMouseWheel: true, moveOnMouseMove: true },
@@ -206,6 +206,7 @@
     };
     opt.legend.textStyle = theme.legend.textStyle;
     opt.xAxis[0].axisLabel.color = theme.xAxis[0].axisLabel.color;
+    opt.xAxis[0].splitLine = theme.xAxis[0].splitLine;
     opt.yAxis[0].axisLabel = theme.yAxis[0].axisLabel;
     opt.yAxis[0].splitLine = theme.yAxis[0].splitLine;
     opt.dataZoom[0] = Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
