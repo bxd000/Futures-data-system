@@ -6,11 +6,30 @@
   {% else %}
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   {% endif %}
+  <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
     .toolbar label { font-size: 14px; color: #94a3b8; }
     .toolbar select { padding: 8px 12px; font-size: 14px; border-radius: 8px; border: 1px solid #334155; background: #16213e; color: #e4e4e7; cursor: pointer; min-width: 120px; }
-    #chart { width: 100%; height: 55vh; min-height: 360px; transform: translateZ(0); will-change: transform; }
+    .engine-toggle { display: inline-flex; border: 1px solid #334155; border-radius: 8px; overflow: hidden; margin-left: 4px; }
+    .engine-toggle .eng-btn { padding: 7px 14px; font-size: 13px; border: none; background: transparent; color: #64748b; cursor: pointer; transition: background 0.15s, color 0.15s; }
+    .engine-toggle .eng-btn:not(:last-child) { border-right: 1px solid #334155; }
+    .engine-toggle .eng-btn.active { background: rgba(239,83,80,0.12); color: #ef5350; font-weight: 600; }
+    .theme-light .engine-toggle { border-color: #cbd5e1; }
+    .theme-light .engine-toggle .eng-btn:not(:last-child) { border-color: #cbd5e1; }
+    .theme-light .engine-toggle .eng-btn.active { background: rgba(13,148,136,0.1); color: #0d9488; }
+    .ind-bar { display: flex; align-items: center; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+    .ind-bar > span { font-size: 13px; color: #64748b; margin-right: 2px; }
+    .ind-btn { padding: 3px 10px; font-size: 12px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #555; cursor: pointer; transition: all 0.15s; line-height: 1.5; }
+    .ind-btn:hover { opacity: 0.85; }
+    .ind-btn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 3px; vertical-align: middle; opacity: 0.5; }
+    .ind-btn.active { font-weight: 600; }
+    .ind-btn.active .dot { opacity: 1; }
+    .theme-dark .ind-btn { color: #64748b; }
+    .theme-dark .ind-btn.active { color: #d1d4dc; border-color: #475569; background: rgba(255,255,255,0.04); }
+    .theme-light .ind-btn.active { color: #334155; border-color: #cbd5e1; background: rgba(0,0,0,0.04); }
+    .chart-box { width: 100%; height: 70vh; min-height: 480px; }
+    #chart { transform: translateZ(0); will-change: transform; }
     .table-wrap { margin-top: 16px; max-height: 38vh; overflow: auto; border: 1px solid #2d3748; border-radius: 8px; background: #16213e; }
     .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .table-wrap th, .table-wrap td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #2d3748; }
@@ -36,7 +55,22 @@
       <option value="{{ code }}">{{ name }}</option>
       {% endfor %}
     </select>
-    <span style="color:#64748b; font-size:13px;">在图表上拖拽平移、滚轮缩放；点击表格行或折线定位</span>
+    <div class="engine-toggle" id="engineToggle">
+      <button type="button" class="eng-btn active" data-engine="ec">ECharts</button>
+      <button type="button" class="eng-btn" data-engine="tv">TradingView</button>
+    </div>
+    <span style="color:#64748b; font-size:13px;">拖拽平移、滚轮缩放</span>
+  </div>
+  <div class="ind-bar" id="indBar" style="display:none;">
+    <span>指标：</span>
+    <button type="button" class="ind-btn" data-ind="ma5"><span class="dot" style="background:#b0b0b0"></span>MA5</button>
+    <button type="button" class="ind-btn active" data-ind="ma10"><span class="dot" style="background:#f0b90b"></span>MA10</button>
+    <button type="button" class="ind-btn active" data-ind="ma20"><span class="dot" style="background:#e040fb"></span>MA20</button>
+    <button type="button" class="ind-btn" data-ind="ma60"><span class="dot" style="background:#00bcd4"></span>MA60</button>
+    <button type="button" class="ind-btn" data-ind="boll"><span class="dot" style="background:#9c27b0"></span>BOLL</button>
+    <button type="button" class="ind-btn" data-ind="macd"><span class="dot" style="background:#ff6f00"></span>MACD</button>
+    <button type="button" class="ind-btn" data-ind="kdj"><span class="dot" style="background:#00e676"></span>KDJ</button>
+    <button type="button" class="ind-btn" data-ind="rsi"><span class="dot" style="background:#ff5252"></span>RSI</button>
   </div>
   <div class="range-bar" id="rangeBar">
     <span>区间：</span>
@@ -47,7 +81,8 @@
     <button type="button" class="btn" data-range="5y">5年</button>
     <button type="button" class="btn" data-range="all">全部</button>
   </div>
-  <div id="chart" role="img" aria-label="收盘价折线图，支持拖拽缩放与区间选择"></div>
+  <div id="chart" class="chart-box"></div>
+  <div id="tv-chart" class="chart-box" style="display:none;"></div>
   <div class="table-wrap">
     <table>
       <thead><tr><th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>成交量</th><th>MA20</th></tr></thead>
@@ -59,39 +94,30 @@
 {% block script %}
 <script>
 (function() {
+  /* ===== shared state ===== */
   var symbolSel = document.getElementById("symbol");
-  var chartDom = document.getElementById("chart");
+  var ecChartDom = document.getElementById("chart");
+  var tvChartDom = document.getElementById("tv-chart");
   var tb = document.getElementById("tb");
   var emptyTip = document.getElementById("emptyTip");
-  var body = document.getElementById("body-theme");
-
-  function isDark() { return body.classList.contains("theme-dark"); }
-  function chartTheme() {
-    var dark = isDark();
-    return {
-      backgroundColor: "transparent",
-      textStyle: { color: dark ? "#94a3b8" : "#64748b" },
-      legend: { textStyle: { color: dark ? "#94a3b8" : "#64748b" } },
-      grid: [ {} ],
-      xAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { show: true, lineStyle: { opacity: dark ? 0.16 : 0.12, color: dark ? "#334155" : "#e2e8f0" } } } ],
-      yAxis: [ { axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { show: true, lineStyle: { opacity: dark ? 0.25 : 0.2, color: dark ? "#334155" : "#e2e8f0" } } } ],
-      dataZoom: [
-        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
-        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
-      ]
-    };
-  }
-
-  var chart = echarts.init(chartDom, null, { renderer: "canvas", useDirtyRect: true });
+  var bodyEl = document.getElementById("body-theme");
+  var rangeBar = document.getElementById("rangeBar");
+  var indBarEl = document.getElementById("indBar");
   var cache = {};
   var tableDebounceTimer = null;
   var currentData = null;
+  var TABLE_MAX_ROWS = 300;
+  var activeEngine = "ec";
+  var UP = "#ef5350", DOWN = "#26a69a";
+
+  function isDark() { return bodyEl.classList.contains("theme-dark"); }
 
   function loadData(code, cb) {
     if (cache[code]) { cb(cache[code]); return; }
     fetch("/api/kline/" + encodeURIComponent(code)).then(function(r) {
       return r.json().then(function(data) {
         if (!r.ok) { cb(null, (data && (data.error || data.log)) || "无数据"); return; }
+        data._close = data.k.map(function(c) { return c[1]; });
         cache[code] = data;
         cb(data);
       }).catch(function() { cb(null, "加载失败"); });
@@ -104,224 +130,458 @@
     var dates = data.dates, k = data.k, vol = data.vol, ma20 = data.ma20 || [];
     i0 = Math.max(0, Math.floor(i0));
     i1 = Math.min(dates.length, Math.ceil(i1));
-    var html = "";
-    for (var i = i0; i < i1; i++) {
+    var total = i1 - i0;
+    var step = total > TABLE_MAX_ROWS ? Math.ceil(total / TABLE_MAX_ROWS) : 1;
+    var frag = document.createDocumentFragment();
+    for (var i = i0; i < i1; i += step) {
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-index", i);
       var r = k[i];
       var m = ma20[i] != null ? ma20[i] : "";
-      html += "<tr data-index=\"" + i + "\"><td>" + dates[i] + "</td><td>" + r[0] + "</td><td>" + r[3] + "</td><td>" + r[2] + "</td><td>" + r[1] + "</td><td>" + vol[i] + "</td><td>" + m + "</td></tr>";
+      tr.innerHTML = "<td>" + dates[i] + "</td><td>" + r[0] + "</td><td>" + r[3] + "</td><td>" + r[2] + "</td><td>" + r[1] + "</td><td>" + vol[i] + "</td><td>" + m + "</td>";
+      frag.appendChild(tr);
     }
-    tb.innerHTML = html;
-  }
-
-  function zoomToDateRange(data, startDate, endDate) {
-    var dates = data.dates;
-    if (!dates || dates.length === 0) return;
-    var i0 = 0, i1 = dates.length - 1;
-    if (startDate) {
-      for (var i = 0; i < dates.length; i++) { if (dates[i] >= startDate) { i0 = i; break; } }
-    }
-    if (endDate) {
-      for (var j = dates.length - 1; j >= 0; j--) { if (dates[j] <= endDate) { i1 = j; break; } }
-    }
-    if (i0 > i1) i1 = i0;
-    var len = dates.length;
-    var start = (i0 / len) * 100;
-    var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [ { start: start, end: end }, { start: start, end: end } ] });
-    applyYAxisFromRange(data, start, end);
-    fillTable(data, i0, i1 + 1);
-  }
-
-  function zoomToRange(data, rangeKey) {
-    var len = data.dates.length;
-    if (len === 0) return;
-    var n = len;
-    if (rangeKey === "1m") n = Math.min(22, len);
-    else if (rangeKey === "3m") n = Math.min(66, len);
-    else if (rangeKey === "6m") n = Math.min(126, len);
-    else if (rangeKey === "1y") n = Math.min(252, len);
-    else if (rangeKey === "5y") n = Math.min(1260, len);
-    var i0 = len - n;
-    var start = (i0 / len) * 100;
-    var end = 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
-    applyYAxisFromRange(data, start, end);
-    fillTable(data, i0, len);
-  }
-
-  function zoomToIndex(data, idx) {
-    var len = data.dates.length;
-    if (len === 0) return;
-    var half = 25;
-    var i0 = Math.max(0, idx - half);
-    var i1 = Math.min(len, idx + half);
-    var start = (i0 / len) * 100;
-    var end = (i1 / len) * 100;
-    chart.setOption({ dataZoom: [{ start: start, end: end }, { start: start, end: end }] });
-    applyYAxisFromRange(data, start, end);
-    fillTable(data, i0, i1);
-    highlightRow(idx);
-    setTimeout(function() { highlightRow(idx); }, 80);
+    tb.innerHTML = "";
+    tb.appendChild(frag);
   }
 
   function highlightRow(idx) {
-    var rows = tb.querySelectorAll("tr");
-    rows.forEach(function(tr) { tr.classList.remove("row-highlight"); });
-    var row = tb.querySelector("tr[data-index=\"" + idx + "\"]");
-    if (row) {
-      row.classList.add("row-highlight");
-      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
+    tb.querySelectorAll("tr").forEach(function(tr) { tr.classList.remove("row-highlight"); });
+    var row = tb.querySelector('tr[data-index="' + idx + '"]');
+    if (row) { row.classList.add("row-highlight"); row.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
   }
 
-  function visibleYRange(data, startPct, endPct) {
-    var closeData = data.k.map(function(c) { return c[1]; });
-    var len = closeData.length;
-    if (len === 0) return null;
-    var i0 = Math.max(0, Math.floor((startPct / 100) * len));
-    var i1 = Math.min(len, Math.ceil((endPct / 100) * len));
+  function rangeToN(key, len) {
+    if (key === "1m") return Math.min(22, len);
+    if (key === "3m") return Math.min(66, len);
+    if (key === "6m") return Math.min(126, len);
+    if (key === "1y") return Math.min(252, len);
+    if (key === "5y") return Math.min(1260, len);
+    return len;
+  }
+
+  /* ===== indicator math ===== */
+  function calcSMA(arr, period) {
+    var out = new Array(arr.length), sum = 0;
+    for (var i = 0; i < arr.length; i++) {
+      sum += arr[i];
+      if (i >= period) sum -= arr[i - period];
+      out[i] = i >= period - 1 ? sum / period : null;
+    }
+    return out;
+  }
+
+  function calcEMA(arr, period) {
+    var k = 2 / (period + 1), out = [arr[0]];
+    for (var i = 1; i < arr.length; i++) out.push(arr[i] * k + out[i - 1] * (1 - k));
+    return out;
+  }
+
+  function calcBoll(closes, period, mult) {
+    period = period || 20; mult = mult || 2;
+    var mid = calcSMA(closes, period);
+    var upper = new Array(closes.length), lower = new Array(closes.length);
+    for (var i = 0; i < closes.length; i++) {
+      if (mid[i] == null) { upper[i] = null; lower[i] = null; continue; }
+      var sq = 0;
+      for (var j = i - period + 1; j <= i; j++) sq += (closes[j] - mid[i]) * (closes[j] - mid[i]);
+      var std = Math.sqrt(sq / period);
+      upper[i] = mid[i] + mult * std;
+      lower[i] = mid[i] - mult * std;
+    }
+    return { upper: upper, mid: mid, lower: lower };
+  }
+
+  function calcMACD(closes, fast, slow, sig) {
+    fast = fast || 12; slow = slow || 26; sig = sig || 9;
+    var ef = calcEMA(closes, fast), es = calcEMA(closes, slow);
+    var dif = new Array(closes.length);
+    for (var i = 0; i < closes.length; i++) dif[i] = ef[i] - es[i];
+    var dea = calcEMA(dif, sig);
+    var hist = new Array(closes.length);
+    for (var i = 0; i < closes.length; i++) hist[i] = (dif[i] - dea[i]) * 2;
+    for (var i = 0; i < slow - 1; i++) { dif[i] = null; dea[i] = null; hist[i] = null; }
+    return { dif: dif, dea: dea, hist: hist };
+  }
+
+  function calcRSI(closes, period) {
+    period = period || 14;
+    var out = new Array(closes.length);
+    out[0] = null;
+    var gains = 0, losses = 0;
+    for (var i = 1; i <= period && i < closes.length; i++) {
+      var d = closes[i] - closes[i - 1];
+      if (d > 0) gains += d; else losses -= d;
+      out[i] = null;
+    }
+    if (period < closes.length) {
+      var ag = gains / period, al = losses / period;
+      out[period] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+      for (var i = period + 1; i < closes.length; i++) {
+        var d = closes[i] - closes[i - 1];
+        ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
+        al = (al * (period - 1) + (d < 0 ? -d : 0)) / period;
+        out[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+      }
+    }
+    return out;
+  }
+
+  function calcKDJ(kData, period) {
+    period = period || 9;
+    var len = kData.length;
+    var rsv = new Array(len), kv = new Array(len), dv = new Array(len), jv = new Array(len);
+    for (var i = 0; i < len; i++) {
+      if (i < period - 1) { rsv[i] = null; kv[i] = null; dv[i] = null; jv[i] = null; continue; }
+      var lo = Infinity, hi = -Infinity;
+      for (var j = i - period + 1; j <= i; j++) {
+        if (kData[j][2] < lo) lo = kData[j][2];
+        if (kData[j][3] > hi) hi = kData[j][3];
+      }
+      rsv[i] = hi === lo ? 50 : (kData[i][1] - lo) / (hi - lo) * 100;
+      if (i === period - 1) { kv[i] = 50; dv[i] = 50; }
+      else { kv[i] = (2 * kv[i - 1] + rsv[i]) / 3; dv[i] = (2 * dv[i - 1] + kv[i]) / 3; }
+      jv[i] = 3 * kv[i] - 2 * dv[i];
+    }
+    return { k: kv, d: dv, j: jv };
+  }
+
+  function toTvLine(dates, values) {
+    var r = [];
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] != null) r.push({ time: dates[i], value: Math.round(values[i] * 100) / 100 });
+    }
+    return r;
+  }
+
+  function toTvHist(dates, values) {
+    var r = [];
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] != null) {
+        var v = Math.round(values[i] * 100) / 100;
+        r.push({ time: dates[i], value: v, color: v >= 0 ? "rgba(239,83,80,0.7)" : "rgba(38,166,154,0.7)" });
+      }
+    }
+    return r;
+  }
+
+  /* ===== indicator config ===== */
+  var IND_COLORS = {
+    ma5: "#b0b0b0", ma10: "#f0b90b", ma20: "#e040fb", ma60: "#00bcd4",
+    boll_upper: "rgba(156,39,176,0.5)", boll_mid: "#9c27b0", boll_lower: "rgba(156,39,176,0.5)",
+    macd_dif: "#e0e0e0", macd_dea: "#f0b90b",
+    kdj_k: "#e0e0e0", kdj_d: "#f0b90b", kdj_j: "#e040fb",
+    rsi: "#ff5252"
+  };
+  var indActive = {};
+  try { var _s = localStorage.getItem("kline-ind"); if (_s) indActive = JSON.parse(_s); } catch(e) {}
+  if (Object.keys(indActive).length === 0) indActive = { ma10: true, ma20: true };
+
+  /* ===== ECharts ===== */
+  var ecChart = echarts.init(ecChartDom, null, { renderer: "canvas", useDirtyRect: true });
+
+  function ecTheme() {
+    var dark = isDark();
+    return {
+      legend: { textStyle: { color: dark ? "#94a3b8" : "#64748b" } },
+      xAxis: [{ axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { show: true, lineStyle: { opacity: dark ? 0.16 : 0.12, color: dark ? "#334155" : "#e2e8f0" } } }],
+      yAxis: [{ axisLabel: { color: dark ? "#94a3b8" : "#64748b" }, splitLine: { show: true, lineStyle: { opacity: dark ? 0.25 : 0.2, color: dark ? "#334155" : "#e2e8f0" } } }],
+      dataZoom: [
+        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } },
+        { textStyle: { color: dark ? "#94a3b8" : "#64748b" }, borderColor: dark ? "#475569" : "#cbd5e1", fillerColor: dark ? "rgba(71,85,105,0.2)" : "rgba(148,163,184,0.15)", handleStyle: { color: dark ? "#64748b" : "#94a3b8" }, moveHandleStyle: { color: dark ? "#64748b" : "#94a3b8" } }
+      ]
+    };
+  }
+
+  function ecVisibleYRange(data, startPct, endPct) {
+    var kArr = data.k;
+    if (!kArr || kArr.length === 0) return null;
+    var len = kArr.length, i0 = Math.max(0, Math.floor((startPct / 100) * len)), i1 = Math.min(len, Math.ceil((endPct / 100) * len));
     if (i0 >= i1) return null;
     var min = Infinity, max = -Infinity;
-    for (var i = i0; i < i1; i++) {
-      var v = closeData[i];
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
+    for (var i = i0; i < i1; i++) { var lo = kArr[i][2], hi = kArr[i][3]; if (lo < min) min = lo; if (hi > max) max = hi; }
     if (min === Infinity) return null;
     var pad = Math.max((max - min) * 0.06, (max - min) * 0.02 + 1);
     return { min: min - pad, max: max + pad };
   }
 
-  function applyYAxisFromRange(data, startPct, endPct) {
-    var r = visibleYRange(data, startPct, endPct);
-    if (r) chart.setOption({ yAxis: [{ min: r.min, max: r.max }] });
-  }
+  function ecApplyYAxis(data, s, e) { var r = ecVisibleYRange(data, s, e); if (r) ecChart.setOption({ yAxis: [{ min: r.min, max: r.max }, {}] }); }
 
-  function applyChartOption(baseOpt, data) {
-    var dates = data.dates, kData = data.k, ma20 = data.ma20 || [];
-    var closeData = kData.map(function(c) { return c[1]; });
-    var theme = chartTheme();
+  function ecApplyOption(data) {
+    var dates = data.dates, kData = data.k, ma20 = data.ma20 || [], volData = data.vol;
+    var dark = isDark(), theme = ecTheme();
+    var ma20Clean = ma20.map(function(v) { return v != null ? v : "-"; });
     var opt = {
       animation: false,
-      animationThreshold: 0,
-      large: true,
-      largeThreshold: 2000,
-      progressive: 800,
-      progressiveThreshold: 3000,
-      tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
-      legend: { data: ["收盘价"], top: 0, textStyle: theme.textStyle },
-      grid: [ { left: "10%", right: "8%", top: "14%", bottom: "18%", containLabel: true } ],
-      xAxis: [ { type: "category", data: dates, boundaryGap: false, axisLabel: { show: true }, silent: false, splitLine: { show: true } } ],
-      yAxis: [ { type: "value", scale: true, splitLine: { show: true }, axisLabel: {} } ],
-      dataZoom: [
-        { type: "inside", xAxisIndex: [0], start: 70, end: 100, throttleDelay: 80, filterMode: "none", zoomOnMouseWheel: true, moveOnMouseMove: true },
-        { type: "slider", xAxisIndex: [0], start: 70, end: 100, throttleDelay: 80, filterMode: "none", showDataShadow: false, showDetail: false, height: 24, borderColor: "transparent", fillerColor: isDark() ? "rgba(71,85,105,0.25)" : "rgba(148,163,184,0.2)", handleSize: "60%", moveHandleSize: "60%" }
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "cross", crossStyle: { color: dark ? "#64748b" : "#94a3b8" } },
+        backgroundColor: dark ? "rgba(22,33,62,0.92)" : "rgba(255,255,255,0.95)",
+        borderColor: dark ? "#334155" : "#e2e8f0",
+        textStyle: { color: dark ? "#e4e4e7" : "#334155", fontSize: 13 },
+        formatter: function(params) {
+          if (!params || !params.length) return "";
+          var idx = params[0].dataIndex, d = dates[idx], k = kData[idx], v = volData[idx];
+          var m = ma20[idx] != null ? ma20[idx] : "-";
+          var chg = k[1] - k[0], pct = k[0] ? ((chg / k[0]) * 100).toFixed(2) : "0.00";
+          var c = chg >= 0 ? UP : DOWN, sign = chg >= 0 ? "+" : "";
+          return '<div style="font-size:13px;line-height:1.7"><b>' + d + '</b><br/>开：<span style="color:' + c + '">' + k[0] + '</span><br/>高：<span style="color:' + c + '">' + k[3] + '</span>　低：<span style="color:' + c + '">' + k[2] + '</span><br/>收：<span style="color:' + c + '"><b>' + k[1] + '</b></span>　<span style="color:' + c + '">' + sign + chg.toFixed(2) + ' (' + sign + pct + '%)</span><br/>量：' + v.toLocaleString() + '<br/>MA20：' + m + '</div>';
+        }
+      },
+      legend: { data: ["K线", "MA20"], top: 0, textStyle: theme.legend.textStyle, itemWidth: 14, itemHeight: 10 },
+      axisPointer: { link: [{ xAxisIndex: "all" }] },
+      grid: [
+        { left: "8%", right: "4%", top: "8%", height: "58%" },
+        { left: "8%", right: "4%", top: "72%", height: "16%" }
       ],
-      series: [{
-        name: "收盘价",
-        type: "line",
-        data: closeData,
-        symbol: "circle",
-        symbolSize: function(v, idx) { return idx === closeData.length - 1 ? 6 : 0; },
-        showSymbol: true,
-        smooth: true,
-        lineStyle: { color: "#ef5350", width: 2 },
-        itemStyle: { color: "#ef5350" },
-        areaStyle: { color: "rgba(239,83,80,0.18)" },
-        sampling: "lttb",
-        progressive: 500
-      }]
+      xAxis: [
+        { type: "category", data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { show: false }, axisTick: { show: false }, axisLine: { lineStyle: { color: dark ? "#334155" : "#e2e8f0" } }, splitLine: theme.xAxis[0].splitLine },
+        { type: "category", data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { color: dark ? "#94a3b8" : "#64748b", fontSize: 11 }, axisLine: { lineStyle: { color: dark ? "#334155" : "#e2e8f0" } }, splitLine: { show: false } }
+      ],
+      yAxis: [
+        { type: "value", scale: true, gridIndex: 0, splitLine: theme.yAxis[0].splitLine, axisLabel: theme.yAxis[0].axisLabel },
+        { type: "value", scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false }, axisTick: { show: false } }
+      ],
+      dataZoom: [
+        { type: "inside", xAxisIndex: [0, 1], start: 70, end: 100, throttle: 120, filterMode: "none", zoomOnMouseWheel: true, moveOnMouseMove: true },
+        { type: "slider", xAxisIndex: [0, 1], start: 70, end: 100, throttle: 120, filterMode: "none", showDataShadow: false, showDetail: false, top: "92%", height: 20, borderColor: "transparent", fillerColor: dark ? "rgba(71,85,105,0.25)" : "rgba(148,163,184,0.2)", handleSize: "60%", moveHandleSize: "60%" }
+      ],
+      series: [
+        { name: "K线", type: "candlestick", data: kData, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: UP, color0: DOWN, borderColor: UP, borderColor0: DOWN, borderWidth: 1 }, large: true, largeThreshold: 600, progressive: 400, progressiveThreshold: 800 },
+        { name: "MA20", type: "line", data: ma20Clean, xAxisIndex: 0, yAxisIndex: 0, symbol: "none", showSymbol: false, smooth: false, lineStyle: { color: "#f0b90b", width: 1.2, opacity: 0.85 }, itemStyle: { color: "#f0b90b" }, sampling: "lttb", large: true, z: 2 },
+        { name: "成交量", type: "bar", data: volData, xAxisIndex: 1, yAxisIndex: 1, large: true, largeThreshold: 600, itemStyle: { color: function(p) { var k = kData[p.dataIndex]; return k ? (k[1] >= k[0] ? "rgba(239,83,80,0.55)" : "rgba(38,166,154,0.55)") : "#64748b"; } }, barMaxWidth: 6 }
+      ]
     };
-    opt.legend.textStyle = theme.legend.textStyle;
-    opt.xAxis[0].axisLabel.color = theme.xAxis[0].axisLabel.color;
-    opt.xAxis[0].splitLine = theme.xAxis[0].splitLine;
-    opt.yAxis[0].axisLabel = theme.yAxis[0].axisLabel;
-    opt.yAxis[0].splitLine = theme.yAxis[0].splitLine;
-    opt.dataZoom[0] = Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
-    opt.dataZoom[1] = Object.assign(opt.dataZoom[1], theme.dataZoom[1]);
-    var yr = visibleYRange(data, 70, 100);
+    Object.assign(opt.dataZoom[0], theme.dataZoom[0]);
+    Object.assign(opt.dataZoom[1], theme.dataZoom[1]);
+    var yr = ecVisibleYRange(data, 70, 100);
     if (yr) { opt.yAxis[0].min = yr.min; opt.yAxis[0].max = yr.max; }
-    chart.setOption(opt, { replaceMerge: ["series"] });
+    ecChart.setOption(opt, { replaceMerge: ["series", "xAxis", "yAxis", "grid"] });
   }
 
-  function render(code) {
-    emptyTip.style.display = "block";
-    emptyTip.textContent = "加载中…";
-    loadData(code, function(data, errMsg) {
-      var rangeBar = document.getElementById("rangeBar");
-      if (!data) {
-        tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = errMsg || "该品种暂无数据";
-        chart.clear();
-        rangeBar.querySelectorAll(".btn").forEach(function(b) { b.disabled = true; });
-        return;
-      }
-      emptyTip.style.display = "none";
-      rangeBar.querySelectorAll(".btn").forEach(function(b) { b.disabled = false; });
-      currentData = data;
-      applyChartOption(null, data);
-      chart.off("dataZoom");
-      chart.on("dataZoom", function() {
-        if (tableDebounceTimer) clearTimeout(tableDebounceTimer);
-        tableDebounceTimer = setTimeout(function() {
-          tableDebounceTimer = null;
-          var opt = chart.getOption();
-          var dz = opt.dataZoom && (opt.dataZoom[0] || opt.dataZoom[1]);
-          if (!dz || dz.start == null) return;
-          var startPct = dz.start, endPct = dz.end;
-          var len = data.dates.length;
-          var start = (startPct / 100) * len;
-          var end = (endPct / 100) * len;
-          applyYAxisFromRange(data, startPct, endPct);
-          fillTable(data, start, end);
-        }, 100);
-      });
-      chart.off("click");
-      chart.on("click", function(param) {
-        if (param.seriesName === "收盘价" && param.dataIndex != null && currentData) {
-          zoomToIndex(currentData, param.dataIndex);
-        }
-      });
-      tb.onclick = function(e) {
-        var tr = e.target && e.target.closest("tr[data-index]");
-        if (tr && currentData) {
-          var idx = parseInt(tr.getAttribute("data-index"), 10);
-          zoomToIndex(currentData, idx);
-        }
-      };
-      var params = new URLSearchParams(window.location.search);
-      var startParam = params.get("start") || "", endParam = params.get("end") || "";
-      var rangeBar = document.getElementById("rangeBar");
-      rangeBar.querySelectorAll(".btn").forEach(function(btn) {
-        btn.classList.remove("active");
-        btn.onclick = function() {
-          rangeBar.querySelectorAll(".btn").forEach(function(b) { b.classList.remove("active"); });
-          btn.classList.add("active");
-          zoomToRange(data, btn.getAttribute("data-range"));
-        };
-      });
-      if (startParam || endParam) {
-        zoomToDateRange(data, startParam || null, endParam || null);
-      } else {
-        zoomToRange(data, "all");
-        rangeBar.querySelector(".btn[data-range=\"all\"]").classList.add("active");
-      }
+  function ecZoomPct(data, s, e) { ecChart.setOption({ dataZoom: [{ start: s, end: e }, { start: s, end: e }] }); ecApplyYAxis(data, s, e); }
+  function ecZoomToRange(data, rk) { var l = data.dates.length; if (!l) return; var n = rangeToN(rk, l), i = l - n; ecZoomPct(data, (i / l) * 100, 100); fillTable(data, i, l); }
+  function ecZoomToDateRange(data, sd, ed) { var d = data.dates, l = d.length; if (!l) return; var i0 = 0, i1 = l - 1; if (sd) { for (var i = 0; i < l; i++) { if (d[i] >= sd) { i0 = i; break; } } } if (ed) { for (var j = l - 1; j >= 0; j--) { if (d[j] <= ed) { i1 = j; break; } } } if (i0 > i1) i1 = i0; ecZoomPct(data, (i0 / l) * 100, (i1 / l) * 100); fillTable(data, i0, i1 + 1); }
+  function ecZoomToIndex(data, idx) { var l = data.dates.length; if (!l) return; var i0 = Math.max(0, idx - 25), i1 = Math.min(l, idx + 25); ecZoomPct(data, (i0 / l) * 100, (i1 / l) * 100); fillTable(data, i0, i1); highlightRow(idx); setTimeout(function() { highlightRow(idx); }, 80); }
+
+  function ecRender(data) {
+    ecApplyOption(data);
+    var yRaf = null;
+    ecChart.off("dataZoom");
+    ecChart.on("dataZoom", function(p) {
+      var s, e;
+      if (p.batch && p.batch.length) { s = p.batch[0].start; e = p.batch[0].end; }
+      else if (p.start != null) { s = p.start; e = p.end; }
+      else { var o = ecChart.getOption(), dz = o.dataZoom && (o.dataZoom[0] || o.dataZoom[1]); if (!dz || dz.start == null) return; s = dz.start; e = dz.end; }
+      if (yRaf) cancelAnimationFrame(yRaf);
+      yRaf = requestAnimationFrame(function() { yRaf = null; ecApplyYAxis(data, s, e); });
+      if (tableDebounceTimer) clearTimeout(tableDebounceTimer);
+      tableDebounceTimer = setTimeout(function() { tableDebounceTimer = null; var l = data.dates.length; fillTable(data, (s / 100) * l, (e / 100) * l); }, 250);
+    });
+    ecChart.off("click");
+    ecChart.on("click", function(p) { if (p.dataIndex != null && currentData) ecZoomToIndex(currentData, p.dataIndex); });
+  }
+
+  /* ===== TradingView Lightweight Charts ===== */
+  var tvChart = null, tvCandle = null, tvVol = null;
+  var tvInited = false;
+  var tvInd = {};
+
+  function tvThemeOpts() {
+    var dark = isDark();
+    return {
+      layout: { background: { type: "solid", color: dark ? "#1a1a2e" : "#f1f5f9" }, textColor: dark ? "#d1d4dc" : "#475569" },
+      grid: { vertLines: { color: dark ? "#2a2e39" : "#e2e8f0" }, horzLines: { color: dark ? "#2a2e39" : "#e2e8f0" } },
+      rightPriceScale: { borderColor: dark ? "#2a2e39" : "#e2e8f0" },
+      timeScale: { borderColor: dark ? "#2a2e39" : "#e2e8f0" },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    };
+  }
+
+  function initTvChart() {
+    if (tvInited) return;
+    tvChart = LightweightCharts.createChart(tvChartDom, Object.assign({
+      width: tvChartDom.clientWidth, height: tvChartDom.clientHeight,
+      timeScale: { timeVisible: false, secondsVisible: false }
+    }, tvThemeOpts()));
+    tvCandle = tvChart.addCandlestickSeries({ upColor: UP, downColor: DOWN, borderUpColor: UP, borderDownColor: DOWN, wickUpColor: UP, wickDownColor: DOWN });
+    tvVol = tvChart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
+    tvVol.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    tvChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+      if (!currentData || !range || activeEngine !== "tv") return;
+      if (tableDebounceTimer) clearTimeout(tableDebounceTimer);
+      tableDebounceTimer = setTimeout(function() { var l = currentData.dates.length; fillTable(currentData, Math.max(0, Math.floor(range.from)), Math.min(l, Math.ceil(range.to) + 1)); }, 200);
+    });
+    new ResizeObserver(function() { if (tvChart && activeEngine === "tv") tvChart.applyOptions({ width: tvChartDom.clientWidth, height: tvChartDom.clientHeight }); }).observe(tvChartDom);
+    tvInited = true;
+  }
+
+  /* --- TV indicator series management --- */
+  function tvMakeLine(color, scaleId) {
+    var opts = { color: color, lineWidth: 1, lastValueVisible: false, priceLineVisible: false };
+    if (scaleId) opts.priceScaleId = scaleId;
+    return tvChart.addLineSeries(opts);
+  }
+
+  function tvCreateInd(name) {
+    if (!tvChart || tvInd[name]) return;
+    if (name.match(/^ma\d+$/)) {
+      tvInd[name] = tvMakeLine(IND_COLORS[name]);
+    } else if (name === "boll") {
+      tvInd.boll = { upper: tvMakeLine(IND_COLORS.boll_upper), mid: tvMakeLine(IND_COLORS.boll_mid), lower: tvMakeLine(IND_COLORS.boll_lower) };
+    } else if (name === "macd") {
+      var hist = tvChart.addHistogramSeries({ priceScaleId: "macd", priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
+      hist.priceScale().applyOptions({ scaleMargins: { top: 0.83, bottom: 0 } });
+      tvInd.macd = { hist: hist, dif: tvMakeLine(IND_COLORS.macd_dif, "macd"), dea: tvMakeLine(IND_COLORS.macd_dea, "macd") };
+      tvVol.priceScale().applyOptions({ scaleMargins: { top: 0.72, bottom: 0.2 } });
+    } else if (name === "kdj") {
+      var sid = "kdj";
+      tvInd.kdj = { k: tvMakeLine(IND_COLORS.kdj_k, sid), d: tvMakeLine(IND_COLORS.kdj_d, sid), j: tvMakeLine(IND_COLORS.kdj_j, sid) };
+      tvInd.kdj.k.priceScale().applyOptions({ scaleMargins: { top: 0.83, bottom: 0 } });
+      if (!indActive.macd) tvVol.priceScale().applyOptions({ scaleMargins: { top: 0.72, bottom: 0.2 } });
+    } else if (name === "rsi") {
+      tvInd.rsi = tvMakeLine(IND_COLORS.rsi, "rsi");
+      tvInd.rsi.priceScale().applyOptions({ scaleMargins: { top: 0.83, bottom: 0 } });
+      if (!indActive.macd && !indActive.kdj) tvVol.priceScale().applyOptions({ scaleMargins: { top: 0.72, bottom: 0.2 } });
+    }
+  }
+
+  function tvRemoveInd(name) {
+    if (!tvChart || !tvInd[name]) return;
+    var obj = tvInd[name];
+    if (name === "boll") { tvChart.removeSeries(obj.upper); tvChart.removeSeries(obj.mid); tvChart.removeSeries(obj.lower); }
+    else if (name === "macd") { tvChart.removeSeries(obj.hist); tvChart.removeSeries(obj.dif); tvChart.removeSeries(obj.dea); }
+    else if (name === "kdj") { tvChart.removeSeries(obj.k); tvChart.removeSeries(obj.d); tvChart.removeSeries(obj.j); }
+    else tvChart.removeSeries(obj);
+    delete tvInd[name];
+    var hasSub = indActive.macd || indActive.kdj || indActive.rsi;
+    if (name === "macd" || name === "kdj" || name === "rsi") {
+      var stillSub = (name !== "macd" && indActive.macd) || (name !== "kdj" && indActive.kdj) || (name !== "rsi" && indActive.rsi);
+      if (!stillSub) tvVol.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    }
+  }
+
+  function tvFeedInd(name, data) {
+    if (!data || !tvInd[name]) return;
+    var cl = data._close, dt = data.dates, kd = data.k;
+    if (name.match(/^ma(\d+)$/)) {
+      tvInd[name].setData(toTvLine(dt, calcSMA(cl, parseInt(RegExp.$1))));
+    } else if (name === "boll") {
+      var b = calcBoll(cl, 20, 2);
+      tvInd.boll.upper.setData(toTvLine(dt, b.upper));
+      tvInd.boll.mid.setData(toTvLine(dt, b.mid));
+      tvInd.boll.lower.setData(toTvLine(dt, b.lower));
+    } else if (name === "macd") {
+      var m = calcMACD(cl, 12, 26, 9);
+      tvInd.macd.dif.setData(toTvLine(dt, m.dif));
+      tvInd.macd.dea.setData(toTvLine(dt, m.dea));
+      tvInd.macd.hist.setData(toTvHist(dt, m.hist));
+    } else if (name === "kdj") {
+      var j = calcKDJ(kd, 9);
+      tvInd.kdj.k.setData(toTvLine(dt, j.k));
+      tvInd.kdj.d.setData(toTvLine(dt, j.d));
+      tvInd.kdj.j.setData(toTvLine(dt, j.j));
+    } else if (name === "rsi") {
+      tvInd.rsi.setData(toTvLine(dt, calcRSI(cl, 14)));
+    }
+  }
+
+  function tvSyncAllInd(data) {
+    var names = ["ma5", "ma10", "ma20", "ma60", "boll", "macd", "kdj", "rsi"];
+    names.forEach(function(n) {
+      if (indActive[n]) { if (!tvInd[n]) tvCreateInd(n); tvFeedInd(n, data); }
+      else if (tvInd[n]) tvRemoveInd(n);
     });
   }
 
-  body.addEventListener("themechange", function() {
-    var code = symbolSel.value;
-    if (!cache[code]) return;
-    applyChartOption(null, cache[code]);
-  });
-
-  symbolSel.addEventListener("change", function() { render(symbolSel.value); });
-  window.addEventListener("resize", function() { chart.resize(); });
-  var params = new URLSearchParams(window.location.search);
-  var codeFromUrl = params.get("code");
-  if (codeFromUrl) {
-    var opt = Array.from(symbolSel.options).find(function(o) { return o.value === codeFromUrl; });
-    if (opt) symbolSel.value = codeFromUrl;
+  function tvSetData(data) {
+    if (!tvInited) initTvChart();
+    var kData = data.k, dates = data.dates, vol = data.vol;
+    var cArr = [], vArr = [];
+    for (var i = 0; i < dates.length; i++) {
+      var k = kData[i];
+      cArr.push({ time: dates[i], open: k[0], high: k[3], low: k[2], close: k[1] });
+      vArr.push({ time: dates[i], value: vol[i], color: k[1] >= k[0] ? "rgba(239,83,80,0.5)" : "rgba(38,166,154,0.5)" });
+    }
+    tvCandle.setData(cArr);
+    tvVol.setData(vArr);
+    tvSyncAllInd(data);
   }
+
+  function tvZoomToRange(data, rk) { if (!tvChart) return; var l = data.dates.length; if (!l) return; if (rk === "all") { tvChart.timeScale().fitContent(); fillTable(data, 0, l); return; } var n = rangeToN(rk, l), i = l - n; tvChart.timeScale().setVisibleLogicalRange({ from: i, to: l - 1 }); fillTable(data, i, l); }
+  function tvZoomToDateRange(data, sd, ed) { if (!tvChart) return; var d = data.dates, l = d.length; if (!l) return; var i0 = 0, i1 = l - 1; if (sd) { for (var i = 0; i < l; i++) { if (d[i] >= sd) { i0 = i; break; } } } if (ed) { for (var j = l - 1; j >= 0; j--) { if (d[j] <= ed) { i1 = j; break; } } } if (i0 > i1) i1 = i0; tvChart.timeScale().setVisibleLogicalRange({ from: i0, to: i1 }); fillTable(data, i0, i1 + 1); }
+  function tvZoomToIndex(data, idx) { if (!tvChart) return; var l = data.dates.length, i0 = Math.max(0, idx - 25), i1 = Math.min(l - 1, idx + 25); tvChart.timeScale().setVisibleLogicalRange({ from: i0, to: i1 }); fillTable(data, i0, i1 + 1); highlightRow(idx); setTimeout(function() { highlightRow(idx); }, 80); }
+  function tvRender(data) { tvSetData(data); tvChart.timeScale().fitContent(); }
+
+  /* ===== indicator toggle ===== */
+  function toggleInd(name) {
+    indActive[name] = !indActive[name];
+    var btn = indBarEl.querySelector('.ind-btn[data-ind="' + name + '"]');
+    if (btn) btn.classList.toggle("active", indActive[name]);
+    try { localStorage.setItem("kline-ind", JSON.stringify(indActive)); } catch(e) {}
+    if (activeEngine === "tv" && tvInited && currentData) {
+      if (indActive[name]) { tvCreateInd(name); tvFeedInd(name, currentData); }
+      else tvRemoveInd(name);
+    }
+  }
+
+  /* ===== engine switching ===== */
+  function setEngine(engine) {
+    activeEngine = engine;
+    ecChartDom.style.display = engine === "ec" ? "" : "none";
+    tvChartDom.style.display = engine === "tv" ? "" : "none";
+    indBarEl.style.display = engine === "tv" ? "" : "none";
+    document.querySelectorAll("#engineToggle .eng-btn").forEach(function(b) { b.classList.toggle("active", b.getAttribute("data-engine") === engine); });
+    try { localStorage.setItem("kline-engine", engine); } catch(e) {}
+    if (currentData) {
+      if (engine === "ec") { ecChart.resize(); ecRender(currentData); }
+      else { if (!tvInited) initTvChart(); tvRender(currentData); }
+      rangeBar.querySelectorAll(".btn").forEach(function(b) { b.classList.remove("active"); });
+      rangeBar.querySelector('.btn[data-range="all"]').classList.add("active");
+      fillTable(currentData, 0, currentData.dates.length);
+    }
+  }
+
+  /* ===== main render ===== */
+  function render(code) {
+    emptyTip.style.display = "block"; emptyTip.textContent = "加载中…";
+    loadData(code, function(data, err) {
+      if (!data) { tb.innerHTML = ""; emptyTip.style.display = "block"; emptyTip.textContent = err || "暂无数据"; if (activeEngine === "ec") ecChart.clear(); rangeBar.querySelectorAll(".btn").forEach(function(b) { b.disabled = true; }); return; }
+      emptyTip.style.display = "none";
+      rangeBar.querySelectorAll(".btn").forEach(function(b) { b.disabled = false; });
+      currentData = data;
+      if (activeEngine === "ec") ecRender(data); else tvRender(data);
+      tb.onclick = function(e) { var tr = e.target && e.target.closest("tr[data-index]"); if (!tr || !currentData) return; var idx = parseInt(tr.getAttribute("data-index"), 10); if (activeEngine === "ec") ecZoomToIndex(currentData, idx); else tvZoomToIndex(currentData, idx); };
+      var up = new URLSearchParams(window.location.search), sp = up.get("start") || "", ep = up.get("end") || "";
+      rangeBar.querySelectorAll(".btn").forEach(function(btn) {
+        btn.classList.remove("active");
+        btn.onclick = function() { rangeBar.querySelectorAll(".btn").forEach(function(b) { b.classList.remove("active"); }); btn.classList.add("active"); var rk = btn.getAttribute("data-range"); if (activeEngine === "ec") ecZoomToRange(data, rk); else tvZoomToRange(data, rk); };
+      });
+      if (sp || ep) { if (activeEngine === "ec") ecZoomToDateRange(data, sp || null, ep || null); else tvZoomToDateRange(data, sp || null, ep || null); }
+      else { if (activeEngine === "ec") ecZoomToRange(data, "all"); else tvZoomToRange(data, "all"); rangeBar.querySelector('.btn[data-range="all"]').classList.add("active"); }
+    });
+  }
+
+  /* ===== global events ===== */
+  bodyEl.addEventListener("themechange", function() {
+    if (activeEngine === "ec" && cache[symbolSel.value]) ecApplyOption(cache[symbolSel.value]);
+    if (tvInited && tvChart) tvChart.applyOptions(tvThemeOpts());
+  });
+  symbolSel.addEventListener("change", function() { render(symbolSel.value); });
+  var resizeTimer = null;
+  window.addEventListener("resize", function() { if (resizeTimer) clearTimeout(resizeTimer); resizeTimer = setTimeout(function() { if (activeEngine === "ec") ecChart.resize(); }, 150); });
+  document.querySelectorAll("#engineToggle .eng-btn").forEach(function(btn) { btn.addEventListener("click", function() { setEngine(btn.getAttribute("data-engine")); }); });
+  indBarEl.querySelectorAll(".ind-btn").forEach(function(btn) { btn.addEventListener("click", function() { toggleInd(btn.getAttribute("data-ind")); }); });
+
+  /* ===== init ===== */
+  try { if (localStorage.getItem("kline-engine") === "tv") activeEngine = "tv"; } catch(e) {}
+  if (activeEngine === "tv") {
+    ecChartDom.style.display = "none"; tvChartDom.style.display = ""; indBarEl.style.display = "";
+    document.querySelectorAll("#engineToggle .eng-btn").forEach(function(b) { b.classList.toggle("active", b.getAttribute("data-engine") === "tv"); });
+  }
+  indBarEl.querySelectorAll(".ind-btn").forEach(function(btn) { if (indActive[btn.getAttribute("data-ind")]) btn.classList.add("active"); else btn.classList.remove("active"); });
+  var urlParams = new URLSearchParams(window.location.search), codeFromUrl = urlParams.get("code");
+  if (codeFromUrl) { var f = Array.from(symbolSel.options).find(function(o) { return o.value === codeFromUrl; }); if (f) symbolSel.value = codeFromUrl; }
   render(symbolSel.value);
 })();
 </script>

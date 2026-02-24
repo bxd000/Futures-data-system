@@ -19,6 +19,9 @@ SYMBOLS = {
 # 品种列表 (代码, 中文名)，供需要遍历的脚本用
 SYMBOL_LIST = [(code, SYMBOLS[code][0]) for code in SYMBOLS]
 
+# 合约乘数（1 点变动对应的元/手），回测盈亏计算用
+CONTRACT_MULTI = {"C0": 10, "CS0": 10, "JD0": 10}
+
 # 新浪接口停更后，用 akshare 补全的起始日期
 CUTOFF_DATE = "2024-07-17"
 SUPPLEMENT_START_DATE = "2024-07-18"

@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from config import SYMBOL_LIST, csv_path
+from config import SYMBOL_LIST, CONTRACT_MULTI, csv_path
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
@@ -231,6 +231,76 @@ def data_page():
 @app.route("/update")
 def update_page():
     return render_template("update.html")
+
+
+@app.route("/backtest")
+def backtest_page():
+    from backtest import STRATEGIES
+    strats = [{"key": k, "name": v["name"], "params": v["params"]}
+              for k, v in STRATEGIES.items()]
+    return render_template("backtest.html", symbols=SYMBOL_LIST, strategies=strats)
+
+
+@app.route("/api/backtest", methods=["POST"])
+def api_backtest():
+    from backtest import BacktestEngine, STRATEGIES
+    body = request.json or {}
+    symbol = body.get("symbol", "C0")
+    strat_key = body.get("strategy", "ma_cross")
+    params = body.get("params", {})
+    start_date = body.get("start_date", "")
+    end_date = body.get("end_date", "")
+    capital = float(body.get("capital", 100000))
+    lots = int(body.get("lots", 1))
+    commission = float(body.get("commission", 5))
+
+    if strat_key not in STRATEGIES:
+        return jsonify({"error": "未知策略"}), 400
+
+    name_map = {c: n for c, n in SYMBOL_LIST}
+    if symbol not in name_map:
+        return jsonify({"error": "未知品种"}), 400
+
+    dates, k_data, volumes, _ = load_kline(symbol, name_map[symbol])
+    if not dates:
+        return jsonify({"error": "无数据"}), 404
+
+    if start_date:
+        idx = next((i for i, d in enumerate(dates) if d >= start_date), 0)
+        dates, k_data, volumes = dates[idx:], k_data[idx:], volumes[idx:]
+    if end_date:
+        idx = next((i for i in range(len(dates) - 1, -1, -1) if dates[i] <= end_date), len(dates) - 1)
+        dates, k_data, volumes = dates[: idx + 1], k_data[: idx + 1], volumes[: idx + 1]
+
+    if len(dates) < 30:
+        return jsonify({"error": "数据不足（至少需要 30 根 K 线）"}), 400
+
+    opens = [r[0] for r in k_data]
+    closes = [r[1] for r in k_data]
+    lows = [r[2] for r in k_data]
+    highs = [r[3] for r in k_data]
+
+    multi = CONTRACT_MULTI.get(symbol, 10)
+    for k, v in params.items():
+        try:
+            params[k] = float(v)
+            if params[k] == int(params[k]):
+                params[k] = int(params[k])
+        except (ValueError, TypeError):
+            pass
+
+    engine = BacktestEngine(dates, opens, highs, lows, closes, volumes)
+    result = engine.run(strat_key, params, capital=capital, lots=lots,
+                        commission=commission, multiplier=multi)
+
+    kline_out = []
+    for i in range(len(dates)):
+        kline_out.append({
+            "time": dates[i], "open": opens[i], "high": highs[i],
+            "low": lows[i], "close": closes[i],
+        })
+    result["kline"] = kline_out
+    return jsonify(result)
 
 
 if __name__ == "__main__":

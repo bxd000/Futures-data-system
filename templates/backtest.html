@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}策略回测 - 期货日K线数据系统{% endblock %}
+{% block head %}
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    /* ── param panel ── */
+    .param-panel{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:18px}
+    .param-group{display:flex;flex-direction:column;gap:3px}
+    .param-group label{font-size:12px;color:#94a3b8}
+    .param-group select,.param-group input{padding:7px 10px;font-size:13px;border-radius:8px;border:1px solid #334155;background:#16213e;color:#e4e4e7;min-width:90px}
+    .param-group input[type=number]{width:80px}
+    .theme-light .param-group select,.theme-light .param-group input{background:#fff;border-color:#cbd5e1;color:#1e293b}
+    .theme-light .param-group label{color:#64748b}
+    #dynParams{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+    .run-btn{padding:8px 28px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:#ef5350;color:#fff;transition:background .15s}
+    .run-btn:hover{background:#e53935}
+    .run-btn:disabled{opacity:.5;cursor:default}
+    /* ── metrics cards ── */
+    .metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+    .m-card{padding:14px 16px;border-radius:10px;background:#16213e;border:1px solid #2d3748}
+    .m-card .m-label{font-size:12px;color:#94a3b8;margin-bottom:4px}
+    .m-card .m-val{font-size:22px;font-weight:700}
+    .m-pos{color:#ef5350}.m-neg{color:#26a69a}
+    .theme-light .m-card{background:#fff;border-color:#e2e8f0}
+    .theme-light .m-card .m-label{color:#64748b}
+    /* ── charts ── */
+    #btKline{width:100%;height:380px;margin-bottom:16px}
+    #btEquity{width:100%;height:260px;margin-bottom:16px}
+    /* ── trade table ── */
+    .bt-table-wrap{max-height:45vh;overflow:auto;border:1px solid #2d3748;border-radius:8px;background:#16213e}
+    .bt-table{width:100%;border-collapse:collapse;font-size:13px}
+    .bt-table th,.bt-table td{padding:8px 12px;text-align:right;border-bottom:1px solid #2d3748}
+    .bt-table th{text-align:left;position:sticky;top:0;background:#16213e;color:#94a3b8}
+    .bt-table .win{background:rgba(239,83,80,0.08)}.bt-table .lose{background:rgba(38,166,154,0.08)}
+    .theme-light .bt-table-wrap{background:#fff;border-color:#e2e8f0}
+    .theme-light .bt-table th{background:#f8fafc;color:#64748b}
+    .theme-light .bt-table th,.theme-light .bt-table td{border-color:#e2e8f0}
+    .theme-light .bt-table .win{background:rgba(239,83,80,0.06)}.theme-light .bt-table .lose{background:rgba(38,166,154,0.06)}
+    #resultArea{display:none}
+    .section-title{font-size:14px;color:#94a3b8;margin:18px 0 8px;font-weight:600}
+    .theme-light .section-title{color:#64748b}
+    .spin{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:sp .6s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes sp{to{transform:rotate(360deg)}}
+  </style>
+{% endblock %}
+{% block content %}
+  <h1 style="margin-top:0;font-size:1.4rem;">策略回测</h1>
+
+  <div class="param-panel">
+    <div class="param-group">
+      <label>品种</label>
+      <select id="pSymbol">
+        {% for code, name in symbols %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="param-group">
+      <label>策略</label>
+      <select id="pStrategy">
+        {% for s in strategies %}<option value="{{ s.key }}">{{ s.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="dynParams"></div>
+    <div class="param-group">
+      <label>起始日期</label>
+      <input type="date" id="pStart">
+    </div>
+    <div class="param-group">
+      <label>截止日期</label>
+      <input type="date" id="pEnd">
+    </div>
+    <div class="param-group">
+      <label>初始资金</label>
+      <input type="number" id="pCapital" value="100000" min="10000" step="10000">
+    </div>
+    <div class="param-group">
+      <label>手数</label>
+      <input type="number" id="pLots" value="1" min="1" max="100">
+    </div>
+    <div class="param-group">
+      <label>手续费/手</label>
+      <input type="number" id="pComm" value="5" min="0" step="1">
+    </div>
+    <div class="param-group" style="justify-content:flex-end">
+      <button class="run-btn" id="runBtn" type="button">开始回测</button>
+    </div>
+  </div>
+
+  <div id="resultArea">
+    <div class="metrics" id="metricsRow"></div>
+    <div class="section-title">K 线 · 买卖信号</div>
+    <div id="btKline"></div>
+    <div class="section-title">资金曲线</div>
+    <div id="btEquity"></div>
+    <div class="section-title">交易明细</div>
+    <div class="bt-table-wrap">
+      <table class="bt-table">
+        <thead><tr><th>#</th><th>开仓日期</th><th>开仓价</th><th>平仓日期</th><th>平仓价</th><th>盈亏(元)</th><th>盈亏(%)</th><th>持仓天数</th></tr></thead>
+        <tbody id="tradeBody"></tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
+{% block script %}
+<script>
+(function(){
+  var STRATS = {{ strategies | tojson }};
+  var stratSel = document.getElementById("pStrategy");
+  var dynBox = document.getElementById("dynParams");
+  var runBtn = document.getElementById("runBtn");
+  var resultArea = document.getElementById("resultArea");
+  var bodyEl = document.getElementById("body-theme");
+  function isDark(){ return bodyEl.classList.contains("theme-dark"); }
+
+  /* ── dynamic params ── */
+  function buildParams(){
+    var key = stratSel.value;
+    var cfg = STRATS.find(function(s){ return s.key === key; });
+    if(!cfg){ dynBox.innerHTML=""; return; }
+    var html = "";
+    cfg.params.forEach(function(p){
+      var step = (typeof p["default"] === "number" && p["default"] % 1 !== 0) ? "0.1" : "1";
+      html += '<div class="param-group"><label>'+p.label+'</label>'
+            + '<input type="number" data-key="'+p.key+'" value="'+p["default"]+'" min="'+p.min+'" max="'+p.max+'" step="'+step+'"></div>';
+    });
+    dynBox.innerHTML = html;
+  }
+  stratSel.addEventListener("change", buildParams);
+  buildParams();
+
+  /* ── collect form ── */
+  function collectParams(){
+    var obj = {};
+    dynBox.querySelectorAll("input[data-key]").forEach(function(inp){
+      obj[inp.getAttribute("data-key")] = parseFloat(inp.value);
+    });
+    return obj;
+  }
+
+  /* ── run backtest ── */
+  var tvChart = null, eqChart = null;
+
+  runBtn.addEventListener("click", function(){
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<span class="spin"></span>回测中…';
+    var payload = {
+      symbol: document.getElementById("pSymbol").value,
+      strategy: stratSel.value,
+      params: collectParams(),
+      start_date: document.getElementById("pStart").value,
+      end_date: document.getElementById("pEnd").value,
+      capital: parseFloat(document.getElementById("pCapital").value) || 100000,
+      lots: parseInt(document.getElementById("pLots").value) || 1,
+      commission: parseFloat(document.getElementById("pComm").value) || 5,
+    };
+    fetch("/api/backtest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,data:d}; }); })
+    .then(function(res){
+      runBtn.disabled = false; runBtn.textContent = "开始回测";
+      if(!res.ok){ alert(res.data.error||"回测失败"); return; }
+      showResult(res.data, payload.capital);
+    })
+    .catch(function(e){ runBtn.disabled=false; runBtn.textContent="开始回测"; alert("请求失败: "+e); });
+  });
+
+  /* ── show result ── */
+  function showResult(data, capital){
+    resultArea.style.display = "block";
+    renderMetrics(data.metrics, capital);
+    renderTrades(data.trades);
+    requestAnimationFrame(function(){
+      renderKline(data.kline, data.signals);
+      renderEquity(data.equity);
+    });
+  }
+
+  /* ── metrics cards ── */
+  function renderMetrics(m, cap){
+    var items = [
+      {label:"总收益率", val:m.total_return+"%", cls:m.total_return>=0?"m-pos":"m-neg"},
+      {label:"年化收益率", val:m.annual_return+"%", cls:m.annual_return>=0?"m-pos":"m-neg"},
+      {label:"最大回撤", val:m.max_drawdown+"%", cls:"m-neg"},
+      {label:"胜率", val:m.win_rate+"%", cls:m.win_rate>=50?"m-pos":"m-neg"},
+      {label:"交易次数", val:m.total_trades, cls:""},
+      {label:"盈亏比", val:m.profit_factor, cls:m.profit_factor>=1?"m-pos":"m-neg"},
+      {label:"平均持仓", val:m.avg_holding_days+"天", cls:""},
+    ];
+    var html = "";
+    items.forEach(function(it){
+      html += '<div class="m-card"><div class="m-label">'+it.label+'</div><div class="m-val '+it.cls+'">'+it.val+'</div></div>';
+    });
+    document.getElementById("metricsRow").innerHTML = html;
+  }
+
+  /* ── kline + markers ── */
+  function renderKline(kline, signals){
+    var dom = document.getElementById("btKline");
+    dom.innerHTML = "";
+    var dark = isDark();
+    if(tvChart){ tvChart.remove(); tvChart=null; }
+    tvChart = LightweightCharts.createChart(dom,{
+      width:dom.clientWidth, height:dom.clientHeight,
+      layout:{background:{type:"solid",color:dark?"#1a1a2e":"#f1f5f9"},textColor:dark?"#d1d4dc":"#475569"},
+      grid:{vertLines:{color:dark?"#2a2e39":"#e2e8f0"},horzLines:{color:dark?"#2a2e39":"#e2e8f0"}},
+      rightPriceScale:{borderColor:dark?"#2a2e39":"#e2e8f0"},
+      timeScale:{borderColor:dark?"#2a2e39":"#e2e8f0"},
+      crosshair:{mode:LightweightCharts.CrosshairMode.Normal}
+    });
+    var candle = tvChart.addCandlestickSeries({
+      upColor:"#ef5350",downColor:"#26a69a",
+      borderUpColor:"#ef5350",borderDownColor:"#26a69a",
+      wickUpColor:"#ef5350",wickDownColor:"#26a69a"
+    });
+    candle.setData(kline);
+    var markers = signals.map(function(s){
+      return {
+        time: s.date,
+        position: s.action==="buy" ? "belowBar" : "aboveBar",
+        color: s.action==="buy" ? "#26a69a" : "#ef5350",
+        shape: s.action==="buy" ? "arrowUp" : "arrowDown",
+        text: s.action==="buy" ? "买" : "卖"
+      };
+    });
+    markers.sort(function(a,b){ return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+    candle.setMarkers(markers);
+    tvChart.timeScale().fitContent();
+    new ResizeObserver(function(){ tvChart.applyOptions({width:dom.clientWidth}); }).observe(dom);
+  }
+
+  /* ── equity curve ── */
+  function renderEquity(equity){
+    var dom = document.getElementById("btEquity");
+    if(!eqChart) eqChart = echarts.init(dom);
+    else eqChart.resize();
+    var dark = isDark();
+    var dates = equity.map(function(e){return e.date;});
+    var vals = equity.map(function(e){return e.value;});
+    eqChart.setOption({
+      animation:false,
+      tooltip:{trigger:"axis",backgroundColor:dark?"rgba(22,33,62,0.92)":"rgba(255,255,255,0.95)",borderColor:dark?"#334155":"#e2e8f0",textStyle:{color:dark?"#e4e4e7":"#334155",fontSize:13}},
+      grid:{left:"10%",right:"4%",top:"10%",bottom:"14%"},
+      xAxis:{type:"category",data:dates,axisLabel:{color:dark?"#94a3b8":"#64748b",fontSize:11},axisLine:{lineStyle:{color:dark?"#334155":"#e2e8f0"}},splitLine:{show:false}},
+      yAxis:{type:"value",scale:true,axisLabel:{color:dark?"#94a3b8":"#64748b"},splitLine:{lineStyle:{color:dark?"#334155":"#e2e8f0",opacity:0.3}}},
+      series:[{type:"line",data:vals,symbol:"none",lineStyle:{color:"#ef5350",width:1.5},areaStyle:{color:"rgba(239,83,80,0.12)"},sampling:"lttb"}]
+    },true);
+  }
+
+  /* ── trade table ── */
+  function renderTrades(trades){
+    var tb = document.getElementById("tradeBody");
+    var html = "";
+    trades.forEach(function(t,i){
+      var cls = t.pnl > 0 ? "win" : (t.pnl < 0 ? "lose" : "");
+      html += '<tr class="'+cls+'">'
+        + '<td style="text-align:left">'+(i+1)+'</td>'
+        + '<td style="text-align:left">'+t.entry_date+'</td><td>'+t.entry_price+'</td>'
+        + '<td style="text-align:left">'+t.exit_date+'</td><td>'+t.exit_price+'</td>'
+        + '<td style="color:'+(t.pnl>=0?"#ef5350":"#26a69a")+'">'+t.pnl.toLocaleString()+'</td>'
+        + '<td style="color:'+(t.pnl_pct>=0?"#ef5350":"#26a69a")+'">'+t.pnl_pct+'%</td>'
+        + '<td>'+t.holding_days+'</td></tr>';
+    });
+    tb.innerHTML = html;
+  }
+
+  /* ── theme sync ── */
+  bodyEl.addEventListener("themechange",function(){
+    if(tvChart && resultArea.style.display !== "none"){
+      var kline = tvChart._klineCache;
+      /* re-render on next backtest; theme will apply */
+    }
+    if(eqChart){
+      var opt = eqChart.getOption();
+      if(opt && opt.series) renderEquity(
+        opt.series[0].data.map(function(v,i){ return {date:opt.xAxis[0].data[i],value:v}; })
+      );
+    }
+  });
+
+  window.addEventListener("resize",function(){
+    if(eqChart) eqChart.resize();
+  });
+})();
+</script>
+{% endblock %}

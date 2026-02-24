@@ -3,7 +3,7 @@ akshare>=1.12.0
 pandas>=1.5.0
 openpyxl>=3.1.0
 flask>=2.3.0
-# K 线展示（可选）
+# optional: kline display
 mplfinance>=0.12.9
 plotly>=5.18.0
 streamlit>=1.28.0
